@@ -2,33 +2,32 @@
 
 namespace D3D11TextureMediaSink
 {
-	// AsyncCallback [テンプレート付きクラス]
+	// AsyncCallback [template class]
 	//
-	//  IMFAsyncCallback を実装するクラス。IMFAsyncCallback::Invoke 呼び出しを、
-	//  指定したインスタンスの指定したメソッドにルーティングする。
-	//  １つのクラスで複数の IMFAsyncCallback を実装したい場合に使う。
+	// A class that implements IMFAsyncCallback. Routes the IMFAsyncCallback::Invoke call to the specified method of the specified instance.
+	// Used when you want to implement multiple IMFAsyncCallback in a single class.
 	//
-	//	使用例:
+	// Example usage:
 	//
-	//	class CTest : public IUnknown
-	//	{
-	//	public:
-	//		CTest() :
-	//			m_cb1(this, &CTest::OnInvoke1),		// m_cb1::Invoke は this->OnInvoke1() を呼び出す。
-	//			m_cb2(this, &CTest::OnInvoke2)		// m_cb2::Invoke は this->OnInvoke2() を呼び出す。
-	//		{ }
-	//		STDMETHODIMP_(ULONG) AddRef();
-	//		STDMETHODIMP_(ULONG) Release();
-	//		STDMETHODIMP QueryInterface(REFIID iid, __RPC__deref_out _Result_nullonfailure_ void** ppv);
+	// class CTest : public IUnknown
+	// {
+	// public:
+	// CTest() :
+	// m_cb1(this, &CTest::OnInvoke1), // m_cb1::Invoke calls this->OnInvoke1().
+	// m_cb2(this, &CTest::OnInvoke2) // m_cb2::Invoke calls this->OnInvoke2().
+	// { }
+	// STDMETHODIMP_(ULONG) AddRef();
+	// STDMETHODIMP_(ULONG) Release();
+	// STDMETHODIMP QueryInterface(REFIID iid, __RPC__deref_out Result_nullonfailure void** ppv);
 	//
-	//	private:
-	//		AsyncCallback<CTest> m_cb1;
-	//		AsyncCallback<CTest> m_cb2;
-	//		void OnInvoke1(IMFAsyncResult* pAsyncResult);
-	//		void OnInvoke2(IMFAsyncResult* pAsyncResult);
-	//	}
+	// private:
+	// AsyncCallback<CTest> m_cb1;
+	// AsyncCallback<CTest> m_cb2;
+	// void OnInvoke1(IMFAsyncResult* pAsyncResult);
+	// void OnInvoke2(IMFAsyncResult* pAsyncResult);
+	// }
 	//
-	template<class T>	// T: 親オブジェクトの型。親オブジェクトは COM であり、かつ InvokeFn 型のメンバを提供すること。
+	template<class T>	// T: The type of the parent object. The parent object is a COM object and provides a member of type InvokeFn.
 	class AsyncCallback : public IMFAsyncCallback
 	{
 	public:
@@ -45,10 +44,10 @@ namespace D3D11TextureMediaSink
 			this->m_pParent = nullptr;
 		}
 
-		// IUnknown 実装
+		// IUnknown implementation.
 		STDMETHODIMP_(ULONG) AddRef()
 		{
-			return this->m_pParent->AddRef();	// 親へ移譲。
+			return this->m_pParent->AddRef();	// 織elegate to the parent object.
 		}
 		STDMETHODIMP QueryInterface(REFIID iid, __RPC__deref_out _Result_nullonfailure_ void** ppv)
 		{
@@ -75,18 +74,18 @@ namespace D3D11TextureMediaSink
 		}
 		STDMETHODIMP_(ULONG) Release()
 		{
-			return this->m_pParent->Release();	// 親へ移譲。
+			return this->m_pParent->Release();	// 織elegate to the parent object.
 		}
 
-		// IMFAsyncCallback 実装
+		// IMFAsyncCallback Implementation
 		STDMETHODIMP GetParameters(__RPC__out DWORD* pdwFlags, __RPC__out DWORD* pdwQueue)
 		{
-			// このメソッドの実装はオプション。
+			// This method implementation is optional.
 			return E_NOTIMPL;
 		}
 		STDMETHODIMP Invoke(__RPC__in_opt IMFAsyncResult* pAsyncResult)
 		{
-			// コールバックを呼び出す。
+			// Call the callback.
 			return (this->m_pParent->*m_pInvokeFn)(pAsyncResult);
 		}
 

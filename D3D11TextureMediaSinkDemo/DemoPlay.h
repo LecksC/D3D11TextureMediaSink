@@ -10,12 +10,12 @@ public:
 	void Dispose();
 	void UpdateAndPresent();
 
-	// IUnknown ŽÀ‘•
+	// IUnknown Implementation
 	STDMETHODIMP_(ULONG) AddRef();
 	STDMETHODIMP QueryInterface(REFIID iid, __RPC__deref_out _Result_nullonfailure_ void** ppv);
 	STDMETHODIMP_(ULONG) Release();
 
-	// IMFAsyncCallback ŽÀ‘•
+	// IMFAsyncCallback Implementation
 	HRESULT STDMETHODCALLTYPE GetParameters(__RPC__out DWORD *pdwFlags, __RPC__out DWORD *pdwQueue);
 	HRESULT STDMETHODCALLTYPE Invoke(__RPC__in_opt IMFAsyncResult *pAsyncResult);
 

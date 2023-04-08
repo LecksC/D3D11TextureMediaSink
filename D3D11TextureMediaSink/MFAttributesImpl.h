@@ -2,9 +2,8 @@
 
 namespace D3D11TextureMediaSink
 {
-	// IMFAttributes インターフェースの基本実装。
-	// IMFAttributes を実装したクラスは、このクラスを実装して、必要なメソッドをオーバーライドする。
-	// 
+	// Basic implementation of the IMFAttributes interface.
+	// Classes that implement IMFAttributes should implement this class and override necessary methods.
 	template <class TBase = IMFAttributes>
 	class MFAttributesImpl : public TBase
 	{
@@ -18,16 +17,16 @@ namespace D3D11TextureMediaSink
 			SafeRelease(this->_AttributeStore);
 		}
 
-		HRESULT Initialize(UINT32 初期サイズ = 0)
+		HRESULT Initialize(UINT32 initialSize = 0)
 		{
 			return (NULL != this->_AttributeStore) ?
-				S_OK :														// 作成済み
-				::MFCreateAttributes(&this->_AttributeStore, 初期サイズ);	// 新規作成
+				S_OK :														// already created
+				::MFCreateAttributes(&this->_AttributeStore, initialSize);	// create new
 		}
 
 	public:
 
-		// IMFAttributes 実装
+		// IMFAttributes Implementation
 
 		STDMETHODIMP GetItem(__RPC__in REFGUID guidKey, __RPC__inout_opt PROPVARIANT* pValue)
 		{
@@ -150,23 +149,23 @@ namespace D3D11TextureMediaSink
 			return this->_AttributeStore->CopyAllItems(pDest);
 		}
 
-		// ヘルパメソッド
+		// Helper methods
 
-		// dwOptions ...  MF_ATTRIBUTE_SERIALIZE_OPTIONSフラグ
+		// dwOptions ... MF_ATTRIBUTE_SERIALIZE_OPTIONS flag
 		HRESULT SerializeToStream(DWORD dwOptions, IStream* pStm)
 		{
 			return ::MFSerializeAttributesToStream(this->_AttributeStore, dwOptions, pStm);
 		}
 
-		// dwOptions ...  MF_ATTRIBUTE_SERIALIZE_OPTIONSフラグ
+		// dwOptions ... MF_ATTRIBUTE_SERIALIZE_OPTIONS flag
 		HRESULT DeserializeFromStream(DWORD dwOptions, IStream* pStm)
 		{
 			return ::MFDeserializeAttributesFromStream(this->_AttributeStore, dwOptions, pStm);
 		}
 
-		// 属性ストアをバイト配列に格納する。
-		//   ppBuf		…… バイト配列を受け取るポインタ。利用が終わったら、CoTaskMemFree() で解放すること。
-		//   pcbSize	…… バイト配列のサイズを受け取るポインタ。
+		// Store attributes in a byte array
+		//   ppBuf ... pointer to receive the byte array. Release with CoTaskMemFree() when done using it.
+		//   pcbSize ... pointer to receive the size of the byte array
 		HRESULT SerializeToBlob(UINT8** ppBuffer, UINT* pcbSize)
 		{
 			if (ppBuffer == NULL)
@@ -217,13 +216,13 @@ namespace D3D11TextureMediaSink
 			return ::MFSetAttributeRatio(this->_AttributeStore, guidKey, unNumerator, unDenominator);
 		}
 
-		// サイズ（幅、高さ）を表す属性を取得する。
+		// Get an attribute that represents size (width and height).
 		HRESULT GetSize(REFGUID guidKey, UINT32* punWidth, UINT32* punHeight)
 		{
 			return ::MFGetAttributeSize(this->_AttributeStore, guidKey, punWidth, punHeight);
 		}
 
-		// サイズ（幅、高さ）を洗わず属性を設定する。
+		// Set an attribute that represents size (width and height).
 		HRESULT SetSize(REFGUID guidKey, UINT32 unWidth, UINT32 unHeight)
 		{
 			return ::MFSetAttributeSize(this->_AttributeStore, guidKey, unWidth, unHeight);

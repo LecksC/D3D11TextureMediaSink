@@ -6,7 +6,7 @@ LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR    lpCmdLine, _In_ int       nCmdShow)
 {
-	// ウィンドウクラスを登録する。
+	// Register a window class.
 	LPCWSTR szWindowClass = L"D3D11TextureMediaSinkDemoClass";
 	LPCWSTR szTitle = L"D3D11TextureMediaSinkDemo";
 	WNDCLASSEXW wcex;
@@ -24,7 +24,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	wcex.hIconSm = LoadIcon(wcex.hInstance, IDI_APPLICATION);
 	::RegisterClassExW(&wcex);
 
-	// ウィンドウを作成し、表示する。
+	// Create a window and show it.
 	HWND hWnd = ::CreateWindowW(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, 0, 1280, 720, nullptr, nullptr, hInstance, nullptr);
 	if (!hWnd)
 		return FALSE;
@@ -32,7 +32,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	::ShowWindow(hWnd, nCmdShow);
 	::UpdateWindow(hWnd);
 
-	// ファイルを選択する。
+	// Select a file.
 	TCHAR szFile[MAX_PATH] = TEXT("");
 	OPENFILENAME ofn;
 	ZeroMemory(&ofn, sizeof(ofn));
@@ -46,7 +46,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	if (!::GetOpenFileName(&ofn))
 		return FALSE;
 
-	// 動画再生クラスを生成し、再生を開始。
+	// Create the video playback class and start playing.
 	auto demoPlay = new DemoPlay(hWnd);
 	HRESULT hr = demoPlay->Play(szFile);
 	if (FAILED(hr))
@@ -55,7 +55,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 		return FALSE;
 	}
 
-	// メッセージループ。
+	// Message loop.
 	MSG msg;
 	while (TRUE)
 	{
@@ -67,7 +67,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 			::DispatchMessage(&msg);
 		}
 
-		// 動画再生クラスを呼び出す。
+		// Call the video playback class.
 		if (msg.message == WM_QUIT)
 		{
 			demoPlay->Dispose();

@@ -4,8 +4,8 @@
 
 namespace D3D11TextureMediaSink
 {
-	// CriticalSection の自動スコープ。
-	// このインスタンスは、コンストラクタでクリティカルセクションをロックし、デストラクタで解放する。
+	// Automatic scope of CriticalSection.
+	// This instance locks the critical section in the constructor and releases it in the destructor.
 	class AutoLock
 	{
 	public:

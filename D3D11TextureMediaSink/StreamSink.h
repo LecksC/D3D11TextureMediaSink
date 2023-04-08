@@ -36,12 +36,12 @@ namespace D3D11TextureMediaSink
 		void LockPresentedSample(IMFSample** ppSample);
 		void UnlockPresentedSample();
 
-		// IUnknown êÈåæ
+		// IUnknown êdeclarations
 		STDMETHODIMP_(ULONG) AddRef();
 		STDMETHODIMP QueryInterface(REFIID iid, __RPC__deref_out _Result_nullonfailure_ void** ppv);
 		STDMETHODIMP_(ULONG) Release();
 
-		// IMFStreamSink êÈåæ
+		// IMFStreamSink êdeclarations
 		STDMETHODIMP Flush();
 		STDMETHODIMP GetIdentifier(__RPC__out DWORD* pdwIdentifier);
 		STDMETHODIMP GetMediaSink(__RPC__deref_out_opt IMFMediaSink** ppMediaSink);
@@ -49,13 +49,13 @@ namespace D3D11TextureMediaSink
 		STDMETHODIMP PlaceMarker(MFSTREAMSINK_MARKER_TYPE eMarkerType, __RPC__in const PROPVARIANT* pvarMarkerValue, __RPC__in const PROPVARIANT* pvarContextValue);
 		STDMETHODIMP ProcessSample(__RPC__in_opt IMFSample* pSample);
 
-		// IMFMediaEventGenerator (in IMFStreamSink) êÈåæ
+		// IMFMediaEventGenerator (in IMFStreamSink) êdeclarations
 		STDMETHODIMP BeginGetEvent(IMFAsyncCallback* pCallback, IUnknown* punkState);
 		STDMETHODIMP EndGetEvent(IMFAsyncResult* pResult, _Out_ IMFMediaEvent** ppEvent);
 		STDMETHODIMP GetEvent(DWORD dwFlags, __RPC__deref_out_opt IMFMediaEvent** ppEvent);
 		STDMETHODIMP QueueEvent(MediaEventType met, __RPC__in REFGUID guidExtendedType, HRESULT hrStatus, __RPC__in_opt const PROPVARIANT* pvValue);
 
-		// IMFMediaTypeHandler êÈåæ
+		// IMFMediaTypeHandler êdeclarations
 		STDMETHODIMP GetCurrentMediaType(_Outptr_ IMFMediaType** ppMediaType);
 		STDMETHODIMP GetMajorType(__RPC__out GUID* pguidMajorType);
 		STDMETHODIMP GetMediaTypeByIndex(DWORD dwIndex, _Outptr_ IMFMediaType** ppType);
@@ -63,10 +63,10 @@ namespace D3D11TextureMediaSink
 		STDMETHODIMP IsMediaTypeSupported(IMFMediaType* pMediaType, _Outptr_opt_result_maybenull_ IMFMediaType** ppMediaType);
 		STDMETHODIMP SetCurrentMediaType(IMFMediaType* pMediaType);
 
-		// IMFGetService êÈåæ
+		// IMFGetService êdeclarations
 		STDMETHODIMP GetService(__RPC__in REFGUID guidService, __RPC__in REFIID riid, __RPC__deref_out_opt LPVOID* ppvObject);
 
-		// SchedulerCallback êÈåæ
+		// SchedulerCallback declarations
 		HRESULT PresentFrame(IMFSample* pSample);
 
 	private:
@@ -130,8 +130,8 @@ namespace D3D11TextureMediaSink
 
 		static BOOL ValidStateMatrix[State_Count][Op_Count]; // Defines a look-up table that says which operations are valid from which states.
 
-		long _éQè∆ÉJÉEÉìÉ^;
-		BOOL _ShutdownçœÇ› = false;
+		long _ReferenceCount;
+		BOOL _ShutdownFlag = false;
 		CriticalSection* _csStreamSinkAndScheduler;
 		CriticalSection* _csPresentedSample;
 
@@ -141,7 +141,7 @@ namespace D3D11TextureMediaSink
 		Scheduler* _Scheduler = NULL;
 		IMFMediaType* _CurrentType = NULL;
 		IMFMediaEventQueue* _EventQueue = NULL;
-		ThreadSafeComPtrQueue<IUnknown>* _â¡çHëOÉLÉÖÅ[;          // Queue to hold samples and markers. Applies to: ProcessSample, PlaceMarker
+		ThreadSafeComPtrQueue<IUnknown>* _PreprocessingQueue;          // Queue to hold samples and markers. Applies to: ProcessSample, PlaceMarker
 		DWORD                       m_WorkQueueId;                  // ID of the work queue for asynchronous operations.
 		AsyncCallback<StreamSink> _WorkQueueCB;                  // Callback for the work queue.
 		ConsumeState _ConsumeData = ConsumeState::ProcessFrames;                  // Flag to indicate process or drop frames

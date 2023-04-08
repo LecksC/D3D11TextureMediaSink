@@ -37,17 +37,17 @@ namespace D3D11TextureMediaSink
 
 	TextureMediaSink::TextureMediaSink()
 	{
-		this->_参照カウンタ = 1;
+		this->_ReferenceCount = 1;
 	}
 	TextureMediaSink::~TextureMediaSink()
 	{
 	}
 
-	// IUnknown 実装
+	// IUnknown Implementation
 
 	ULONG	TextureMediaSink::AddRef()
 	{
-		return InterlockedIncrement(&this->_参照カウンタ);
+		return InterlockedIncrement(&this->_ReferenceCount);
 	}
 	HRESULT TextureMediaSink::QueryInterface(REFIID iid, __RPC__deref_out _Result_nullonfailure_ void** ppv)
 	{
@@ -82,7 +82,7 @@ namespace D3D11TextureMediaSink
 	}
 	ULONG	TextureMediaSink::Release()
 	{
-		ULONG uCount = InterlockedDecrement(&this->_参照カウンタ);
+		ULONG uCount = InterlockedDecrement(&this->_ReferenceCount);
 
 		if (uCount == 0)
 			delete this;
@@ -91,7 +91,7 @@ namespace D3D11TextureMediaSink
 	}
 
 
-	// IMFMediaSink 実装
+	// IMFMediaSink Implementation
 
 	HRESULT TextureMediaSink::AddStreamSink(DWORD dwStreamSinkIdentifier, __RPC__in_opt IMFMediaType* pMediaType, __RPC__deref_out_opt IMFStreamSink** ppStreamSink)
 	{
@@ -106,11 +106,11 @@ namespace D3D11TextureMediaSink
 		if (pdwCharacteristics == NULL)
 			return E_POINTER;
 
-		// シャットダウン済み？
+		// Already shut down?
 		if (FAILED(hr = this->CheckShutdown()))
 			return hr;
 
-		*pdwCharacteristics = MEDIASINK_FIXED_STREAMS;	// ストリーム数は固定
+		*pdwCharacteristics = MEDIASINK_FIXED_STREAMS;	// The number of streams is fixed.
 
 		return S_OK;
 	}
@@ -118,14 +118,14 @@ namespace D3D11TextureMediaSink
 	{
 		HRESULT hr;
 
-		// シャットダウン済み？
+		// Already shut down?
 		if (FAILED(hr = this->CheckShutdown()))
 			return hr;
 
 		if (NULL == ppPresentationClock)
 			return E_POINTER;
 
-		// クロックを返す。
+		// Return the clock.
 		*ppPresentationClock = this->_PresentationClock;
 		if (NULL != this->_PresentationClock)
 			(*ppPresentationClock)->AddRef();
@@ -139,13 +139,13 @@ namespace D3D11TextureMediaSink
 		if (NULL == ppStreamSink)
 			return E_POINTER;
 
-		// シャットダウン済み？
+		// Has shutdown been completed?
 		if (FAILED(hr = this->CheckShutdown()))
 			return hr;
 
-		// ストリームシンクを返す。
+		// Return stream sink.
 		if (dwIdentifier != 0)
-			return MF_E_INVALIDSTREAMNUMBER;	// 0 以外は不許可
+			return MF_E_INVALIDSTREAMNUMBER;	// Only 0 is allowed.
 
 		return this->_StreamSink->QueryInterface(__uuidof(IMFStreamSink), (void**)ppStreamSink);
 	}
@@ -153,11 +153,12 @@ namespace D3D11TextureMediaSink
 	{
 		HRESULT hr;
 
-		// シャットダウン済み？
+		// Has shutdown been completed?
 		if (FAILED(hr = this->CheckShutdown()))
 			return hr;
 
-		// ストリームシンクを返す。
+
+		// Return stream sink.
 		if (NULL == ppStreamSink)
 			return E_POINTER;
 
@@ -177,12 +178,12 @@ namespace D3D11TextureMediaSink
 		if (NULL == pcStreamSinkCount)
 			return E_POINTER;
 
-		// シャットダウン済み？
+		// Has shutdown been completed?
 		if (FAILED(hr = this->CheckShutdown()))
 			return hr;
 
-		// ストリームシンク数を返す。
-		*pcStreamSinkCount = 1;		// 1個だけサポート。（固定）
+		// Return the number of stream sinks.
+		*pcStreamSinkCount = 1;		// Only one is supported (fixed).
 
 		return S_OK;
 	}
@@ -194,15 +195,15 @@ namespace D3D11TextureMediaSink
 	{
 		HRESULT hr;
 
-		// シャットダウン済み？
+		// Is it already shut down?
 		if (FAILED(hr = this->CheckShutdown()))
 			return hr;
 
-		// 設定済みのクロックと同じ？
+		// Is the clock already set the same?
 		if (this->_PresentationClock == pPresentationClock)
 			return S_OK;
 
-		// 既にクロックを持っているなら、その状態通知を外す。
+		// If it already has a clock, remove its notification.
 		if (NULL != this->_PresentationClock)
 		{
 			if (FAILED(hr = this->_PresentationClock->RemoveClockStateSink(this)))
@@ -211,7 +212,7 @@ namespace D3D11TextureMediaSink
 			SafeRelease(this->_PresentationClock);
 		}
 
-		// 新しいクロックに、状態通知を登録する。
+		// Register the new clock for state notification.
 		if (NULL != pPresentationClock)
 		{
 			if (FAILED(hr = pPresentationClock->AddClockStateSink(this)))
@@ -220,16 +221,16 @@ namespace D3D11TextureMediaSink
 			pPresentationClock->AddRef();
 		}
 
-		// 新しいクロック（またはnull）を保存する。
+		// Save the new clock (or null).
 		this->_PresentationClock = pPresentationClock;
 
 		return S_OK;
 	}
 	HRESULT TextureMediaSink::Shutdown()
 	{
-		if (!this->_Shutdown済み)
+		if (!this->_ShutdownFlag)
 		{
-			this->_Shutdown済み = TRUE;
+			this->_ShutdownFlag = TRUE;
 
 			if (NULL != this->_PresentationClock)
 				this->_PresentationClock->RemoveClockStateSink(this);
@@ -247,7 +248,7 @@ namespace D3D11TextureMediaSink
 		return MF_E_SHUTDOWN;
 	}
 
-	// IMFClockStateSink 実装
+	// IMFClockStateSink Implementation
 
 	HRESULT TextureMediaSink::OnClockPause(MFTIME hnsSystemTime)
 	{
@@ -255,11 +256,11 @@ namespace D3D11TextureMediaSink
 
 		HRESULT hr;
 
-		// シャットダウン済み？
+		// Is the sink already shut down?
 		if (FAILED(hr = this->CheckShutdown()))
 			return hr;
 
-		// ストリームシンクへ移譲。
+		// Delegate to the stream sink.
 		return this->_StreamSink->Pause();
 	}
 	HRESULT TextureMediaSink::OnClockRestart(MFTIME hnsSystemTime)
@@ -268,18 +269,18 @@ namespace D3D11TextureMediaSink
 
 		HRESULT hr;
 
-		// シャットダウン済み？
+		// Is the sink already shut down?
 		if (FAILED(hr = CheckShutdown()))
 			return hr;
 
-		// ストリームシンクに移譲。
+		// Delegate to the stream sink.
 		return this->_StreamSink->Restart();
 	}
 	HRESULT TextureMediaSink::OnClockSetRate(MFTIME hnsSystemTime, float flRate)
 	{
 		HRESULT hr = S_OK;
 
-		// スケジューラに新しいレートを設定。
+		// Set the new rate to the scheduler.
 		if (NULL != this->_Scheduler)
 			hr = this->_Scheduler->SetClockRate(flRate);
 
@@ -291,7 +292,7 @@ namespace D3D11TextureMediaSink
 
 		HRESULT hr;
 
-		// シャットダウン済み？
+		// Is the sink already shut down?
 		if (FAILED(hr = CheckShutdown()))
 			return hr;
 
@@ -306,13 +307,13 @@ namespace D3D11TextureMediaSink
 		}
 		else
 		{
-			// スケジューラを開始する。
+			// Start the scheduler.
 			if (NULL != this->_Scheduler)
 				if (FAILED(hr = this->_Scheduler->Start(this->_PresentationClock)))
 					return hr;
 		}
 
-		// ストリームシンクを開始する。
+		// Start the stream sink.
 		return this->_StreamSink->Start(llClockStartOffset, this->_PresentationClock);
 	}
 	HRESULT TextureMediaSink::OnClockStop(MFTIME hnsSystemTime)
@@ -321,22 +322,22 @@ namespace D3D11TextureMediaSink
 
 		HRESULT hr;
 
-		// シャットダウン済み？
+		// Is the sink already shut down?
 		if (FAILED(hr = this->CheckShutdown()))
 			return hr;
 
-		// ストリームシンクを停止。
+		// Stop the stream sink.
 		if (FAILED(hr = this->_StreamSink->Stop()))
 			return hr;
 
-		// スケジューラを停止。
+		// Stop the scheduler.
 		if (NULL != this->_Scheduler)
 			hr = this->_Scheduler->Stop();
 
 		return S_OK;
 	}
 
-	// IMFAttributes 実装
+	// IMFAttributes Implementation
 
 	HRESULT TextureMediaSink::GetUnknown(__RPC__in REFGUID guidKey, __RPC__in REFIID riid, __RPC__deref_out_opt LPVOID* ppv)
 	{
@@ -345,7 +346,7 @@ namespace D3D11TextureMediaSink
 			if (riid == IID_IMFSample)
 			{
 				IMFSample* pSample = nullptr;
-				this->_StreamSink->LockPresentedSample(&pSample);	// この中で pSample->AddRef される
+				this->_StreamSink->LockPresentedSample(&pSample);	// Within this block of code, pSample->AddRef is called.
 				*ppv = pSample;
 				return S_OK;
 			}
@@ -368,7 +369,7 @@ namespace D3D11TextureMediaSink
 
 	HRESULT TextureMediaSink::Initialize()
 	{
-		this->_Shutdown済み = FALSE;
+		this->_ShutdownFlag = FALSE;
 		this->_csMediaSink = new CriticalSection();
 		this->_csStreamSinkAndScheduler = new CriticalSection();
 
@@ -377,13 +378,13 @@ namespace D3D11TextureMediaSink
 		this->_Presenter = new Presenter();
 		this->_StreamSink = new StreamSink(this, this->_csStreamSinkAndScheduler, this->_Scheduler, this->_Presenter);
 
-		// スケジューラのコールバックに、CStreamSink を登録する。
+		// Register CStreamSink with the scheduler's callback.
 		this->_Scheduler->SetCallback(static_cast<SchedulerCallback*>(this->_StreamSink));
 
 		return S_OK;
 	}
 	HRESULT TextureMediaSink::CheckShutdown() const
 	{
-		return (this->_Shutdown済み) ? MF_E_SHUTDOWN : S_OK;
+		return (this->_ShutdownFlag) ? MF_E_SHUTDOWN : S_OK;
 	}
 }

@@ -4,7 +4,7 @@ namespace D3D11TextureMediaSink
 {
 	// static
 
-	// 優先ビデオフォーマットのリスト
+	//  List of preferred video formats
 	GUID const* const StreamSink::s_pVideoFormats[] =
 	{
 		&MFVideoFormat_NV12,
@@ -27,10 +27,10 @@ namespace D3D11TextureMediaSink
 		&MFVideoFormat_NV11,
 		&MFVideoFormat_420O
 	};
-	// 優先ビデオフォーマットのリストの要素数
+	// Number of elements in the priority video format list
 	const DWORD StreamSink::s_dwNumVideoFormats = sizeof(StreamSink::s_pVideoFormats) / sizeof(StreamSink::s_pVideoFormats[0]);
 
-	// ビデオフォーマットとDXGIフォーマットの対応表
+	// Mapping table between video formats and DXGI formats
 	const StreamSink::FormatEntry StreamSink::s_DXGIFormatMapping[] =
 	{
 		{ MFVideoFormat_RGB32, DXGI_FORMAT_B8G8R8X8_UNORM },
@@ -50,7 +50,7 @@ namespace D3D11TextureMediaSink
 		{ GUID_NULL, DXGI_FORMAT_UNKNOWN }
 	};
 
-	// 操作判定マップ
+	// Operation detection map
 	BOOL StreamSink::ValidStateMatrix[StreamSink::State_Count][StreamSink::Op_Count] =
 	{
 		// States:    Operations:
@@ -90,9 +90,9 @@ namespace D3D11TextureMediaSink
 	{
 		this->Initialize();
 
-		this->_参照カウンタ = 1;
-		this->_Shutdown済み = FALSE;
-		this->_加工前キュー = new ThreadSafeComPtrQueue<IUnknown>();
+		this->_ReferenceCount = 1;
+		this->_ShutdownFlag = FALSE;
+		this->_PreprocessingQueue = new ThreadSafeComPtrQueue<IUnknown>();
 		this->_ParentMediaSink = pParentMediaSink;
 		this->_csStreamSinkAndScheduler = critsec;
 		this->_csPresentedSample = new CriticalSection();
@@ -101,7 +101,7 @@ namespace D3D11TextureMediaSink
 
 		::MFAllocateWorkQueueEx(MF_STANDARD_WORKQUEUE, &this->m_WorkQueueId);
 
-		// イベントキューを生成。
+		// Create an event queue.
 		::MFCreateEventQueue(&this->_EventQueue);
 	}
 	StreamSink::~StreamSink()
@@ -118,7 +118,7 @@ namespace D3D11TextureMediaSink
 
 		do
 		{
-			// 操作可能？
+			// Is the operation valid?
 			if (FAILED(hr = this->ValidateOperation(OpStart)))
 				break;
 
@@ -128,13 +128,13 @@ namespace D3D11TextureMediaSink
 				this->_StartTime = start;        // Cache the start time.
 			}
 
-			// プレゼンテーションクロックを更新。
+			// Update the presentation clock.
 			SafeRelease(this->_PresentationClock);
 			this->_PresentationClock = pClock;
 			if (NULL != this->_PresentationClock)
 				this->_PresentationClock->AddRef();
 
-			// 非同期操作 Start を実行。
+			// Execute the asynchronous operation Start.
 			this->_State = State_Started;
 			hr = this->QueueAsyncOperation(OpStart);
 
@@ -152,11 +152,11 @@ namespace D3D11TextureMediaSink
 
 		HRESULT hr;
 
-		// 操作許可？
+		// Is operation permitted?
 		if (FAILED(hr = ValidateOperation(OpPause)))
 			return hr;
 
-		// 同期操作 Pause を実行
+		// Perform synchronous operation Pause
 		this->_State = State_Paused;
 		return this->QueueAsyncOperation(OpPause);
 	}
@@ -168,11 +168,11 @@ namespace D3D11TextureMediaSink
 
 		HRESULT hr;
 
-		// 操作可能？
+		// Is operation permitted?
 		if (FAILED(hr = ValidateOperation(OpRestart)))
 			return hr;
 
-		// 非同期操作 Restart を実行
+		// Perform asynchronous operation Restart
 		this->_State = State_Started;
 		return this->QueueAsyncOperation(OpRestart);
 	}
@@ -184,14 +184,14 @@ namespace D3D11TextureMediaSink
 
 		HRESULT hr;
 
-		// 操作可能？
+		// Is operation valid?
 		if (FAILED(hr = ValidateOperation(OpStop)))
 			return hr;
 
-		// プレゼンテーションクロックを解放。
+		// Release presentation clock.
 		SafeRelease(this->_PresentationClock);
 
-		// 非同期操作 Stop を実行。
+		// Execute asynchronous operation Stop.
 		this->_State = State_Stopped;
 		return this->QueueAsyncOperation(OpStop);
 	}
@@ -206,7 +206,7 @@ namespace D3D11TextureMediaSink
 
 		::MFUnlockWorkQueue(this->m_WorkQueueId);
 
-		this->_加工前キュー->Clear();
+		this->_PreprocessingQueue->Clear();
 
 		SafeRelease(this->_PresentationClock);
 
@@ -230,11 +230,11 @@ namespace D3D11TextureMediaSink
 		this->_csPresentedSample->Unlock();
 	}
 
-	// IUnknown 実装
+	// IUnknown Implementation
 
 	ULONG	StreamSink::AddRef()
 	{
-		return InterlockedIncrement(&this->_参照カウンタ);
+		return InterlockedIncrement(&this->_ReferenceCount);
 	}
 	HRESULT StreamSink::QueryInterface(REFIID iid, __RPC__deref_out _Result_nullonfailure_ void** ppv)
 	{
@@ -277,7 +277,7 @@ namespace D3D11TextureMediaSink
 	}
 	ULONG	StreamSink::Release()
 	{
-		ULONG uCount = InterlockedDecrement(&this->_参照カウンタ);
+		ULONG uCount = InterlockedDecrement(&this->_ReferenceCount);
 
 		if (uCount == 0)
 			delete this;
@@ -285,7 +285,7 @@ namespace D3D11TextureMediaSink
 		return uCount;
 	}
 
-	// IMFStreamSink 実装
+	// IMFStreamSink Implementation
 
 	HRESULT	StreamSink::Flush()
 	{
@@ -326,12 +326,12 @@ namespace D3D11TextureMediaSink
 
 		HRESULT hr;
 
-		// シャットダウン済み？
+		// Is shutdown done?
 		if (FAILED(hr = this->CheckShutdown()))
 			return hr;
 
-		// ストリームIDを返す。
-		*pdwIdentifier = 0;	// 固定
+		// Return stream ID.
+		*pdwIdentifier = 0;	// Fixed.
 
 		return hr;
 	}
@@ -346,7 +346,7 @@ namespace D3D11TextureMediaSink
 		if (ppMediaSink == NULL)
 			return E_POINTER;
 
-		// シャットダウン済み？
+		// Is it already shut down?
 		if (FAILED(hr = this->CheckShutdown()))
 			return hr;
 
@@ -369,7 +369,7 @@ namespace D3D11TextureMediaSink
 		if (FAILED(hr = this->CheckShutdown()))
 			return hr;
 
-		// このストリームシンクは自身のタイプハンドラとしても働くので、自身に QueryInterface する。
+		// This stream sink also acts as its own type handler, so query itself for the IID_IMFMediaTypeHandler interface.
 		return this->QueryInterface(IID_IMFMediaTypeHandler, (void**)ppHandler);
 	}
 	HRESULT StreamSink::PlaceMarker(MFSTREAMSINK_MARKER_TYPE eMarkerType, __RPC__in const PROPVARIANT* pvarMarkerValue, __RPC__in const PROPVARIANT* pvarContextValue)
@@ -383,21 +383,21 @@ namespace D3D11TextureMediaSink
 
 		do
 		{
-			// シャットダウン済み？
+			// Is it already shut down?
 			if (FAILED(hr = this->CheckShutdown()))
 				break;
 
-			// 操作可能？
+			// Check if the operation is valid.
 			if (FAILED(hr = this->ValidateOperation(OpPlaceMarker)))
 				break;
 
-			// マーカーを作成し、加工前キューに格納する。
+			// Create a marker and add it to the pre-processing queue.
 			if (FAILED(hr = Marker::Create(eMarkerType, pvarMarkerValue, pvarContextValue, &pMarker)))
 				break;
-			if (FAILED(hr = this->_加工前キュー->Queue(pMarker)))
+			if (FAILED(hr = this->_PreprocessingQueue->Queue(pMarker)))
 				break;
 
-			// 一時停止中ではないなら、非同期操作 sample/marker を実行する。
+			// If the stream is not paused, queue an asynchronous operation to process the marker/sample.
 			if (this->_State != State_Paused)
 			{
 				if (FAILED(hr = this->QueueAsyncOperation(OpPlaceMarker)))
@@ -422,27 +422,27 @@ namespace D3D11TextureMediaSink
 			return E_POINTER;
 
 		if (0 == this->_OutstandingSampleRequests)
-			return MF_E_INVALIDREQUEST;	// 誰もサンプルを要求していない
+			return MF_E_INVALIDREQUEST;	// Nobody is requesting samples
 
 
-		// シャットダウン済み？
+		// Has the object been shut down?
 		if (FAILED(hr = this->CheckShutdown()))
 			return hr;
 
 		this->_OutstandingSampleRequests--;
 
-		// 操作可能？
+		// Can the operation be performed?
 		if (!this->_WaitingForOnClockStart)
 		{
 			if (FAILED(hr = this->ValidateOperation(OpProcessSample)))
 				return hr;
 		}
 
-		// サンプルを加工前キューに追加する。
-		if (FAILED(hr = this->_加工前キュー->Queue(pSample)))
+		// Add the sample to the pre-processing queue.
+		if (FAILED(hr = this->_PreprocessingQueue->Queue(pSample)))
 			return hr;
 
-		// 停止/一時停止中でない場合、非同期操作 processSample を実行する。
+		// If not paused or stopped, perform the asynchronous processSample operation.
 		if (this->_State != State_Paused && this->_State != State_Stopped)
 		{
 			if (FAILED(hr = this->QueueAsyncOperation(OpProcessSample)))
@@ -452,19 +452,18 @@ namespace D3D11TextureMediaSink
 		return S_OK;
 	}
 
-	// IMFMediaEventGenerator (in IMFStreamSink) 実装
-
+	// IMFMediaEventGenerator (in IMFStreamSink) Implementation
 	HRESULT StreamSink::BeginGetEvent(IMFAsyncCallback* pCallback, IUnknown* punkState)
 	{
 		AutoLock lock(this->_csStreamSinkAndScheduler);
 
 		HRESULT hr;
 
-		// シャットダウン済み？
+		// Is shutdown completed?
 		if (FAILED(hr = this->CheckShutdown()))
 			return hr;
 
-		// イベントキューに移譲。
+		// Delegate to the event queue.
 		return this->_EventQueue->BeginGetEvent(pCallback, punkState);
 	}
 	HRESULT StreamSink::EndGetEvent(IMFAsyncResult* pResult, _Out_ IMFMediaEvent** ppEvent)
@@ -473,11 +472,11 @@ namespace D3D11TextureMediaSink
 
 		HRESULT hr;
 
-		// シャットダウン済み？
+		// Is shutdown completed?
 		if (FAILED(hr = this->CheckShutdown()))
 			return hr;
 
-		// イベントキューに移譲。
+		// Delegate to the event queue.
 		return this->_EventQueue->EndGetEvent(pResult, ppEvent);
 	}
 	HRESULT StreamSink::GetEvent(DWORD dwFlags, __RPC__deref_out_opt IMFMediaEvent** ppEvent)
@@ -495,7 +494,7 @@ namespace D3D11TextureMediaSink
 			{
 				AutoLock lock(this->_csStreamSinkAndScheduler);
 
-				// シャットダウン済み？
+				// Is shutdown completed?
 				if (FAILED(hr = this->CheckShutdown()))
 					break;
 
@@ -521,15 +520,15 @@ namespace D3D11TextureMediaSink
 
 		HRESULT hr;
 
-		// シャットダウン済み？
+		// Is already shutdown?
 		if (FAILED(hr = this->CheckShutdown()))
 			return hr;
 
-		// イベントキューに移譲。
+		// Delegate to the event queue.
 		return this->_EventQueue->QueueEventParamVar(met, guidExtendedType, hrStatus, pvValue);
 	}
 
-	// IMFMediaTypeHandler 実装
+	// IMFMediaTypeHandler Implementation
 
 	HRESULT StreamSink::GetCurrentMediaType(_Outptr_ IMFMediaType** ppMediaType)
 	{
@@ -542,7 +541,7 @@ namespace D3D11TextureMediaSink
 
 		HRESULT hr;
 
-		// シャットダウン済み？
+		// Is already shutdown?
 		if (FAILED(hr = this->CheckShutdown()))
 			return hr;
 
@@ -563,15 +562,15 @@ namespace D3D11TextureMediaSink
 
 		HRESULT hr;
 
-		// シャットダウン済み？
+		// Shutdown completed?
 		if (FAILED(hr = this->CheckShutdown()))
 			return hr;
 
-		// メディアタイプ未設定？
+		// Media type not set?
 		if (NULL == this->_CurrentType)
 			return MF_E_NOT_INITIALIZED;
 
-		// 現在のメディアタイプのメジャータイプを返す。
+		// Return the major type of the current media type.
 		return this->_CurrentType->GetGUID(MF_MT_MAJOR_TYPE, pguidMajorType);
 	}
 	HRESULT StreamSink::GetMediaTypeByIndex(DWORD dwIndex, _Outptr_ IMFMediaType** ppType)
@@ -583,16 +582,16 @@ namespace D3D11TextureMediaSink
 		if (NULL == ppType)
 			return E_POINTER;
 
-		// シャットダウン済み？
+		// Shutdown completed?
 		if (FAILED(hr = this->CheckShutdown()))
 			return hr;
 
 		if (dwIndex >= s_dwNumVideoFormats)
-			return MF_E_NO_MORE_TYPES;	// インデックスが範囲外
+			return MF_E_NO_MORE_TYPES;	// Index out of range
 
 		IMFMediaType* pVideoMediaType = NULL;
 
-		// dwIndex 番目の優先ビデオフォーマットに対応するメディアタイプを作成して返す。
+		// Create and return the media type corresponding to the dwIndex-th preferred video format.
 		do
 		{
 			if (FAILED(hr = ::MFCreateMediaType(&pVideoMediaType)))
@@ -622,11 +621,11 @@ namespace D3D11TextureMediaSink
 		if (NULL == pdwTypeCount)
 			return E_POINTER;
 
-		// シャットダウン済み？
+		// Shutdown completed?
 		if (FAILED(hr = this->CheckShutdown()))
 			return hr;
 
-		// 優先ビデオフォーマット数（＝優先メディアタイプ数）を返す。
+		// Return the number of preferred video formats (i.e., the number of preferred media types).
 		*pdwTypeCount = s_dwNumVideoFormats;
 
 		return S_OK;
@@ -642,18 +641,18 @@ namespace D3D11TextureMediaSink
 		if (ppMediaType)
 			*ppMediaType = NULL;
 
-		// シャットダウン済み？
+		// Shutdown completed?
 		if (FAILED(hr = this->CheckShutdown()))
 			return hr;
 
 		if (NULL == pMediaType)
 			return E_POINTER;
 
-		// 検査対象メディアタイプのサブタイプを取得。
+		// Get the subtype of the media type to be checked.
 		if (FAILED(hr = pMediaType->GetGUID(MF_MT_SUBTYPE, &subType)))
 			return hr;
 
-		// 優先フォーマットリストにある？
+		// Is it in the preferred format list?
 		hr = MF_E_INVALIDMEDIATYPE;
 		for (DWORD i = 0; i < s_dwNumVideoFormats; i++)
 		{
@@ -664,9 +663,9 @@ namespace D3D11TextureMediaSink
 			}
 		}
 		if (FAILED(hr))
-			return hr;		// ない；優先フォーマットが対応していない
+			return hr;		// Not found; preferred format not supported
 
-		// 対応するDXGIフォーマットを取得。
+		// Get the corresponding DXGI format.
 		DWORD i = 0;
 		while (s_DXGIFormatMapping[i].Subtype != GUID_NULL)
 		{
@@ -679,7 +678,7 @@ namespace D3D11TextureMediaSink
 			i++;
 		}
 
-		// プレゼンタで対応している？
+		// Is it supported by the presenter?
 		if (FAILED(hr = this->_Presenter->IsSupported(pMediaType, this->_dxgiFormat)))
 			return hr;
 
@@ -697,27 +696,27 @@ namespace D3D11TextureMediaSink
 		AutoLock lock(this->_csStreamSinkAndScheduler);
 
 
-		// シャットダウン済み？
+		// Shutdown completed?
 		if (FAILED(hr = this->CheckShutdown()))
 			return hr;
 
-		// 操作可能？
+		// Can operate?
 		if (FAILED(hr = this->ValidateOperation(OpSetMediaType)))
 			return hr;
 
-		// 指定されたメディアタイプはサポートされる？
+		// Is the specified media type supported?
 		if (FAILED(hr = this->IsMediaTypeSupported(pMediaType, NULL)))
 			return hr;
 
-		// 現在のメディアタイプを、指定されたメディアタイプに更新。
+		// Update the current media type to the specified media type.
 		SafeRelease(this->_CurrentType);
 		this->_CurrentType = pMediaType;
 		this->_CurrentType->AddRef();
 
-		// インタレースモードを取得して保存。
+		// Get and save the interlace mode.
 		hr = pMediaType->GetUINT32(MF_MT_INTERLACE_MODE, &this->_InterlaceMode);
 
-		// フレームレートをスケジューラに設定する。
+		// Set the frame rate to the scheduler.
 		MFRatio fps = { 0, 0 };
 		if (SUCCEEDED(this->GetFrameRate(pMediaType, &fps)) && (fps.Numerator != 0) && (fps.Denominator != 0))
 		{
@@ -739,7 +738,7 @@ namespace D3D11TextureMediaSink
 			this->_Scheduler->SetFrameRate(s_DefaultFrameRate);
 		}
 
-		// 必要となるサンプル数を、メディアタイプをもとに修正する（プログレッシブ or インタレース）
+		// Modify the required number of samples based on the media type (progressive or interlace).
 		if (this->_InterlaceMode == MFVideoInterlace_Progressive)
 		{
 			// XVP will hold on to 1 sample but that's the same sample we will internally hold on to
@@ -752,29 +751,28 @@ namespace D3D11TextureMediaSink
 			hr = this->SetUINT32(MF_SA_REQUIRED_SAMPLE_COUNT, SAMPLE_QUEUE_HIWATER_THRESHOLD + MAX_PAST_FRAMES - 1);
 		}
 
-		// プレゼンタにメディアタイプを設定する。
+		// Set the media type to the presenter.
 		if (SUCCEEDED(hr))
 		{
 			if (FAILED(hr = this->_Presenter->SetCurrentMediaType(pMediaType)))
 				return hr;
 		}
 
-		// 開始または一時停止ではないなら、準備ステータスに戻す。
+		// If not starting or pausing, return to the ready status.
 		if (State_Started != this->_State && State_Paused != this->_State)
 		{
 			this->_State = State_Ready;
 		}
 		else
 		{
-			// 開始または一時停止中であれば、フラッシュする。
-			//Flush all current samples in the Queue as this is a format change
+			// If starting or pausing, flush the samples in the queue as this is a format change.
 			hr = this->Flush();
 		}
 
 		return hr;
 	}
 
-	// IMFGetService 実装
+	// IMFGetService Implementation
 
 	HRESULT StreamSink::GetService(__RPC__in REFGUID guidService, __RPC__in REFIID riid, __RPC__deref_out_opt LPVOID* ppvObject)
 	{
@@ -802,7 +800,7 @@ namespace D3D11TextureMediaSink
 		return hr;
 	}
 
-	// SchedulerCallback 実装
+	// SchedulerCallback Implementation
 
 	HRESULT StreamSink::PresentFrame(IMFSample* pSample)
 	{
@@ -812,11 +810,11 @@ namespace D3D11TextureMediaSink
 
 		HRESULT hr = S_OK;
 
-		// 現在のサンプルを解放する。
+		// Release the current sample.
 		if (NULL != this->_PresentedSample)
 			this->_Presenter->ReleaseSample(this->_PresentedSample);
 
-		// 指定されたサンプルの SAMPLE_STATE を PRESENT に更新。
+		// Update the specified sample's SAMPLE_STATE to PRESENT.
 		if (FAILED(hr = pSample->SetUINT32(SAMPLE_STATE, SAMPLE_STATE_PRESENT)))
 			return hr;
 
@@ -827,7 +825,7 @@ namespace D3D11TextureMediaSink
 		//_OutputDebugString(_T("StreamSink::PresentFrame; %lld\n"), time);
 
 
-		// 入れ替え。
+		// Swap the samples.
 		this->_PresentedSample = pSample;
 
 		return S_OK;
@@ -838,14 +836,14 @@ namespace D3D11TextureMediaSink
 
 	HRESULT StreamSink::CheckShutdown() const
 	{
-		return (this->_Shutdown済み) ? MF_E_SHUTDOWN : S_OK;
+		return (this->_ShutdownFlag) ? MF_E_SHUTDOWN : S_OK;
 	}
 	HRESULT StreamSink::GetFrameRate(IMFMediaType* pType, MFRatio* pRatio)
 	{
 		if (NULL == pRatio)
 			return E_POINTER;
 
-		// 指定されたメディアタイプのフレームレートを取得する。
+		// Get the frame rate of the specified media type.
 		return ::MFGetAttributeRatio(pType, MF_MT_FRAME_RATE, (UINT32*)&pRatio->Numerator, (UINT32*)&pRatio->Denominator);
 	}
 	HRESULT StreamSink::ValidateOperation(StreamOperation op)
@@ -879,7 +877,7 @@ namespace D3D11TextureMediaSink
 				break;
 			}
 
-			// ワークキューに非同期アイテムを追加。
+			// Add an asynchronous item to the work queue.
 			if (FAILED(hr = ::MFPutWorkItem(this->m_WorkQueueId, &this->_WorkQueueCB, pOp)))
 				break;
 
@@ -897,7 +895,7 @@ namespace D3D11TextureMediaSink
 
 		HRESULT hr;
 
-		// シャットダウン済み？
+		// Check if the stream sink has been shut down
 		if (FAILED(hr = this->CheckShutdown()))
 			return hr;
 
@@ -916,34 +914,34 @@ namespace D3D11TextureMediaSink
 
 				//_OutputDebugString(_T("OnStart/OnRestart\n"));
 
-				// クライアントに MEStreamSinkStarted を送信。
+				// Queue the MEStreamSinkStarted event
 				if (FAILED(hr = this->QueueEvent(MEStreamSinkStarted, GUID_NULL, hr, NULL)))
 					break;
 
-				// 2つのサンプルを要求することから始まる……
+				// Increment the sample request count and queue the MEStreamSinkRequestSample event
 				this->_OutstandingSampleRequests++;
 				if (FAILED(hr = this->QueueEvent(MEStreamSinkRequestSample, GUID_NULL, hr, NULL)))
 					break;
 
-				// 既にサンプルキューに入ってるかもしれない（一時停止時など）
+				// Process samples from the queue
 				if (FAILED(hr = this->ProcessSamplesFromQueue(this->_ConsumeData)))
 					break;
 				break;
 
 			case OpStop:
 
-				// キューのサンプルを破棄する。
+				// Flush the stream sink and reset the sample request count
 				this->Flush();
 				this->_OutstandingSampleRequests = 0;
 
-				// クライアントに MEStreamSinkStopped を送信する。
+				// Queue the MEStreamSinkStopped event
 				if (FAILED(hr = this->QueueEvent(MEStreamSinkStopped, GUID_NULL, hr, NULL)))
 					break;
 				break;
 
 			case OpPause:
 
-				// クライアントに MFStreamSinkPaused を送信する。
+				// Queue the MFStreamSinkPaused event
 				if (FAILED(hr = this->QueueEvent(MEStreamSinkPaused, GUID_NULL, hr, NULL)))
 					break;
 				break;
@@ -970,20 +968,20 @@ namespace D3D11TextureMediaSink
 
 		HRESULT hr = S_OK;
 
-		// シャットダウン済み？
+		// Is it already shut down?
 		if (FAILED(hr = this->CheckShutdown()))
 			return hr;
 
-		// 次のサンプルを処理していい？
+		// Can we process the next sample?
 		if (this->_Presenter->IsReadyNextSample())
 		{
 			do
 			{
-				// キュー内のサンプルを処理する。
+				// Process the samples in the queue.
 				if (FAILED(hr = this->ProcessSamplesFromQueue(ProcessFrames)))
 					break;
 
-				// 他のサンプルがあるか確認する。
+				// Check if there are other samples.
 				if (pOp->m_op == OpProcessSample)
 				{
 					if (FAILED(hr = this->RequestSamples()))
@@ -992,7 +990,7 @@ namespace D3D11TextureMediaSink
 
 			} while (FALSE);
 
-			// 非同期操作の途中で何かが失敗したなら、クライアントに MEError を送信する。
+			// If something fails during the asynchronous operation, send MEError to the client.
 			if (FAILED(hr))
 				hr = this->QueueEvent(MEError, GUID_NULL, hr, NULL);
 		}
@@ -1009,8 +1007,8 @@ namespace D3D11TextureMediaSink
 		BOOL bDeviceChanged = FALSE;
 		BOOL bProcessAgain = FALSE;
 
-		// キューの中のサンプル／マーカーについて……
-		while (this->_加工前キュー->Dequeue(&pUnk) == S_OK)	// 空の場合、Dequeue() は S_FALSE を返す。
+		// About samples/markers in the queue...
+		while (this->_PreprocessingQueue->Dequeue(&pUnk) == S_OK)	// If empty, Dequeue() returns S_FALSE.
 		{
 			bProcessMoreSamples = TRUE;
 			IMarker* pMarker = NULL;
@@ -1019,18 +1017,18 @@ namespace D3D11TextureMediaSink
 
 			do
 			{
-				// pUnk がマーカー or サンプルのいずれであるかを確認する。
+				// Check if pUnk is a marker or a sample.
 				if ((hr = pUnk->QueryInterface(__uuidof(IMarker), (void**)&pMarker)) == E_NOINTERFACE)
 				{
 					if (FAILED(hr = pUnk->QueryInterface(IID_IMFSample, (void**)&pSample)))
 						break;
 				}
 
-				// マーカーとサンプルで処理分岐。
+				// Process branching for markers and samples.
 
 				if (pMarker)
 				{
-					// (A) マーカーの場合 
+					// (A) When a marker is detected.
 
 					HRESULT hrStatus = S_OK;  // Status code for marker event.
 
@@ -1045,7 +1043,7 @@ namespace D3D11TextureMediaSink
 						if (FAILED(hr = pMarker->GetContext(&var)))
 							break;
 
-						// クライアントにマーカーのステータスを通信。
+						// Communicate the marker status to the client.
 						if (FAILED(hr = this->QueueEvent(MEStreamSinkMarker, GUID_NULL, hrStatus, &var)))
 							break;
 
@@ -1058,52 +1056,52 @@ namespace D3D11TextureMediaSink
 				}
 				else
 				{
-					// (B) サンプルの場合
+					// (B) When a sample is detected.
 
 					if (bConsumeData == ProcessFrames)
 					{
-						// クロックを確認する。
+						// Check the clock.
 						LONGLONG clockTime;
 						MFTIME systemTime;
-						if (FAILED(hr = this->_PresentationClock->GetCorrelatedTime(0, &clockTime, &systemTime)))	// 現在時刻取得（ビデオ処理前）
+						if (FAILED(hr = this->_PresentationClock->GetCorrelatedTime(0, &clockTime, &systemTime)))	// Get the current time (before video processing).
 							break;
 						LONGLONG sampleTime;
-						if (FAILED(hr = pSample->GetSampleTime(&sampleTime)))	// サンプルの表示時刻取得
+						if (FAILED(hr = pSample->GetSampleTime(&sampleTime)))	// Get the display time of the sample.
 							break;
 						if (sampleTime < clockTime)
 						{
-							// クロックに対してサンプルが遅れている場合は、ここでサンプルを破棄（ドロップ）する。
+							// If the sample is delayed with respect to the clock, drop the sample here.
 							_OutputDebugString(_T("drop1.[sampleTime:%lld, clockTime:%lld]\n"), sampleTime / 10000, clockTime / 10000);
 							break;
 						}
 
-						// プレゼンタでサンプルに対するビデオ処理を行い、出力サンプルを得る。
+						// Perform video processing on the sample with the presenter and obtain an output sample.
 						if (FAILED(hr = this->_Presenter->ProcessFrame(this->_CurrentType, pSample, &this->_InterlaceMode, &bDeviceChanged, &bProcessAgain, &pOutSample)))
 							break;
 
-						// デバイスが変わってたらクライアントに通知。
+						// Notify the client if the device has changed.
 						if (bDeviceChanged)
 							if (FAILED(hr = this->QueueEvent(MEStreamSinkDeviceChanged, GUID_NULL, S_OK, NULL)))
 								break;
 
-						// 入力サンプルが使われなかったら、キューに戻す。
+						// If the input sample is not used, return it to the queue.
 						if (bProcessAgain)
-							if (FAILED(hr = this->_加工前キュー->PutBack(pSample)))
+							if (FAILED(hr = this->_PreprocessingQueue->PutBack(pSample)))
 								break;
 
-						if (FAILED(hr = this->_PresentationClock->GetCorrelatedTime(0, &clockTime, &systemTime)))	// もう一度現在時刻取得（ビデオ処理後）
+						if (FAILED(hr = this->_PresentationClock->GetCorrelatedTime(0, &clockTime, &systemTime)))	// Get the current time again after video processing
 							break;
 
 						if (sampleTime < clockTime)
 						{
-							// クロックに対してサンプルが遅れている場合は、ここでサンプルを破棄（ドロップ）するその２。
+							// If the sample is delayed relative to the clock, discard (drop) the sample here (part 2).
 							_OutputDebugString(_T("drop2.[sampleTime:%lld, clockTime:%lld]\n"), sampleTime / 10000, clockTime / 10000);
 							break;
 						}
 
 						if (NULL != pOutSample)
 						{
-							bool bPresentNow = (State_Started != this->_State);	// 通常再生時以外はすぐに表示する（スクラブ時、再描画時など）
+							bool bPresentNow = (State_Started != this->_State);	// Immediately display in non-normal playback modes (scrubbing, redraws, etc.)
 							hr = this->_Scheduler->ScheduleSample(pOutSample, bPresentNow);
 							bProcessMoreSamples = FALSE;
 
@@ -1135,11 +1133,11 @@ namespace D3D11TextureMediaSink
 
 		while (this->NeedMoreSamples())
 		{
-			// シャットダウン済み？
+			// Is shutdown requested?
 			if (FAILED(hr = this->CheckShutdown()))
 				return hr;
 
-			// クライアントに MEStreamSinkRequestSample を送信する。
+			// Sends MEStreamSinkRequestSample to the client.
 			this->_OutstandingSampleRequests++;
 			if (FAILED(hr = this->QueueEvent(MEStreamSinkRequestSample, GUID_NULL, S_OK, NULL)))
 				return hr;
@@ -1149,13 +1147,13 @@ namespace D3D11TextureMediaSink
 	}
 	BOOL StreamSink::NeedMoreSamples()
 	{
-		const DWORD cSamplesInFlight = this->_加工前キュー->GetCount() + this->_OutstandingSampleRequests;
+		const DWORD cSamplesInFlight = this->_PreprocessingQueue->GetCount() + this->_OutstandingSampleRequests;
 
 		return (cSamplesInFlight < SAMPLE_QUEUE_HIWATER_THRESHOLD);
 	}
 
 
-	// AcyncOperation クラス実装
+	// AsyncOperation Implementation
 
 	StreamSink::AsyncOperation::AsyncOperation(StreamOperation op)
 	{

@@ -33,7 +33,7 @@ template <class T> inline void SafeRelease(T*& pT)
         OutputDebugString( buf ); \
       }
 #else
-#    define _OutputDebugString( str, ... ) // 空実装
+#    define _OutputDebugString( str, ... ) // Empty implementation
 #endif
 
 #pragma comment(lib, "mf.lib")

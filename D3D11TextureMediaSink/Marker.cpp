@@ -2,26 +2,26 @@
 
 namespace D3D11TextureMediaSink
 {
-	Marker::Marker(MFSTREAMSINK_MARKER_TYPE 型)
+	Marker::Marker(MFSTREAMSINK_MARKER_TYPE type)
 	{
-		this->参照カウンタ = 1;
-		this->型 = 型;
-		::PropVariantInit(&this->値);
-		::PropVariantInit(&this->コンテキスト);
+		this->mReferenceCounter = 1;
+		this->mType = type;
+		::PropVariantInit(&this->mValue);
+		::PropVariantInit(&this->mContext);
 	}
 	Marker::~Marker()
 	{
-		::PropVariantClear(&this->値);
-		::PropVariantClear(&this->コンテキスト);
+		::PropVariantClear(&this->mValue);
+		::PropVariantClear(&this->mContext);
 	}
 
 	// static
 
 	HRESULT Marker::Create(
-		MFSTREAMSINK_MARKER_TYPE	型,
-		const PROPVARIANT*			値,			// NULL にできる。
-		const PROPVARIANT*			コンテキスト,	// NULL にできる。
-		IMarker**					ppMarker	// [out] 作成した IMarker を受け取るポインタ。
+		MFSTREAMSINK_MARKER_TYPE eMarkerType,
+		const PROPVARIANT* pvarMarkerValue, // Can be NULL.
+		const PROPVARIANT* pvarContextValue, // Can be NULL.
+		IMarker** ppMarker // [out] A pointer to receive the IMarker you created.
 	)
 	{
 		if (NULL == ppMarker)
@@ -29,27 +29,27 @@ namespace D3D11TextureMediaSink
 
 		HRESULT hr = S_OK;
 
-		Marker* pMarker = new Marker(型);
+		Marker* pMarker = new Marker(eMarkerType);
 		do
 		{
-			// 指定された型をもって、Marker を新規生成。
+			// Creates a new Marker with the specified type.
 			if (NULL == pMarker)
 			{
 				hr = E_OUTOFMEMORY;
 				break;
 			}
 
-			// 指定された値をMarkerの値にコピー。
-			if (NULL != 値)
-				if (FAILED(hr = ::PropVariantCopy(&pMarker->値, 値)))
+			// Copy the specified value to the Marker value.
+			if (NULL != pvarMarkerValue)
+				if (FAILED(hr = ::PropVariantCopy(&pMarker->mValue, pvarMarkerValue)))
 					break;
 
-			// 指定されたコンテキストをCMarkerのコンテキストにコピー。
-			if (コンテキスト)
-				if (FAILED(hr = ::PropVariantCopy(&pMarker->コンテキスト, コンテキスト)))
+			// Copy the specified context to the CMarker context.
+			if (pvarContextValue)
+				if (FAILED(hr = ::PropVariantCopy(&pMarker->mContext, pvarContextValue)))
 					break;
 
-			// 戻り値用に参照カウンタを更新して、完成。
+			// Update the reference counter for the return value and complete.
 			*ppMarker = pMarker;
 			(*ppMarker)->AddRef();
 
@@ -60,15 +60,15 @@ namespace D3D11TextureMediaSink
 		return hr;
 	}
 
-	// IUnknown 実装
+	// IUnknown implementation
 	ULONG Marker::AddRef()
 	{
-		return InterlockedIncrement(&this->参照カウンタ);
+		return InterlockedIncrement(&this->mReferenceCounter);
 	}
 	ULONG Marker::Release()
 	{
-		// スレッドセーフにするために、テンポラリ変数に移した値を取得し、返す。
-		ULONG uCount = InterlockedDecrement(&this->参照カウンタ);
+		// To make it thread-safe, get the value transferred to a temporary variable and return it.
+		ULONG uCount = InterlockedDecrement(&this->mReferenceCounter);
 
 		if (uCount == 0)
 			delete this;
@@ -99,13 +99,13 @@ namespace D3D11TextureMediaSink
 		return S_OK;
 	}
 
-	// IMarker 実装
+	// IMarker implementation
 	HRESULT Marker::GetType(MFSTREAMSINK_MARKER_TYPE* pType)
 	{
 		if (pType == NULL)
 			return E_POINTER;
 
-		*pType = this->型;
+		*pType = this->mType;
 
 		return S_OK;
 	}
@@ -114,7 +114,7 @@ namespace D3D11TextureMediaSink
 		if (pvar == NULL)
 			return E_POINTER;
 
-		return ::PropVariantCopy(pvar, &(this->値));
+		return ::PropVariantCopy(pvar, &(this->mValue));
 
 	}
 	HRESULT Marker::GetContext(PROPVARIANT* pvar)
@@ -122,6 +122,6 @@ namespace D3D11TextureMediaSink
 		if (pvar == NULL)
 			return E_POINTER;
 
-		return ::PropVariantCopy(pvar, &(this->コンテキスト));
+		return ::PropVariantCopy(pvar, &(this->mContext));
 	}
 }

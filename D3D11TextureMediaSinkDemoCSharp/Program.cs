@@ -9,7 +9,7 @@ namespace D3D11TextureMediaSinkDemoCSharp
     static class Program
     {
         /// <summary>
-        /// アプリケーションのメイン エントリ ポイントです。
+        /// This is the main entry point of the application.
         /// </summary>
         [STAThread]
         static void Main()

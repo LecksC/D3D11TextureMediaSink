@@ -2,8 +2,8 @@
 
 namespace D3D11TextureMediaSink
 {
-	// クリティカルセクションのwrapper。
-	// コンストラクタでクリティカルセクションを初期化し、デストラクタで削除する。
+	// A wrapper for critical section.
+	// Initializes the critical section in the constructor and deletes it in the destructor.
 	class CriticalSection
 	{
 	public:

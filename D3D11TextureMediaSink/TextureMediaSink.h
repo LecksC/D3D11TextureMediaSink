@@ -16,13 +16,13 @@ namespace D3D11TextureMediaSink
 		void LockPresentedSample(IMFSample** ppSample);
 		void UnlockPresentedSample(IMFSample* pSample);
 
-		// IUnknown 宣言
+		// IUnknown declaration
 
 		STDMETHODIMP_(ULONG) AddRef();
 		STDMETHODIMP QueryInterface(REFIID iid, __RPC__deref_out _Result_nullonfailure_ void** ppv);
 		STDMETHODIMP_(ULONG) Release();
 
-		// IMFMediaSink 宣言
+		// IMFMediaSink declaration
 
 		STDMETHODIMP AddStreamSink(DWORD dwStreamSinkIdentifier, __RPC__in_opt IMFMediaType* pMediaType, __RPC__deref_out_opt IMFStreamSink** ppStreamSink);
 		STDMETHODIMP GetCharacteristics(__RPC__out DWORD* pdwCharacteristics);
@@ -34,7 +34,7 @@ namespace D3D11TextureMediaSink
 		STDMETHODIMP SetPresentationClock(__RPC__in_opt IMFPresentationClock* pPresentationClock);
 		STDMETHODIMP Shutdown();
 
-		// IMFClockStateSink 宣言
+		// IMFClockStateSink declaration
 
 		STDMETHODIMP OnClockPause(MFTIME hnsSystemTime);
 		STDMETHODIMP OnClockRestart(MFTIME hnsSystemTime);
@@ -42,20 +42,20 @@ namespace D3D11TextureMediaSink
 		STDMETHODIMP OnClockStart(MFTIME hnsSystemTime, LONGLONG llClockStartOffset);
 		STDMETHODIMP OnClockStop(MFTIME hnsSystemTime);
 
-		// IMFAttributes 宣言
+		// IMFAttributes 薪eclaration
 		STDMETHODIMP GetUnknown(__RPC__in REFGUID guidKey, __RPC__in REFIID riid, __RPC__deref_out_opt LPVOID* ppv);
 		STDMETHODIMP SetUnknown(__RPC__in REFGUID guidKey, __RPC__in_opt IUnknown* pUnknown);
 
 	private:
-		long _参照カウンタ;
-		BOOL _Shutdown済み = false;
+		long _ReferenceCount;
+		BOOL _ShutdownFlag = false;
 		IMFPresentationClock* _PresentationClock = NULL;
 		StreamSink* _StreamSink = NULL;
 		Scheduler* _Scheduler = NULL;
 		Presenter* _Presenter = NULL;
 
-		CriticalSection* _csMediaSink;				// MediaSink 内用
-		CriticalSection* _csStreamSinkAndScheduler; // StreamSink と Scheduler 用
+		CriticalSection* _csMediaSink;				// Critical section for MediaSink
+		CriticalSection* _csStreamSinkAndScheduler; // Critical section for StreamSink and Scheduler
 
 		HRESULT Initialize();
 		HRESULT CheckShutdown() const;

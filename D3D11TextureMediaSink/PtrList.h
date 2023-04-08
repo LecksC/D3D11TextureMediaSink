@@ -2,7 +2,7 @@
 
 namespace D3D11TextureMediaSink
 {
-	// 非COMオブジェクトを要素とする双方向リスト。
+	// Doubly-linked list that holds non-COM objects as elements.
 	//
 	template <class T, BOOL NULLABLE = FALSE>
 	class PtrList

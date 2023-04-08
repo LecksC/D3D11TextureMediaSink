@@ -2,7 +2,7 @@
 
 namespace D3D11TextureMediaSink
 {
-	// COMオブジェクトを要素とするスレッドセーフキュー。
+	// Thread-safe queue that contains COM objects.
 	// 
 	template <class T>
 	class ThreadSafeComPtrQueue

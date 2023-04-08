@@ -20,8 +20,8 @@ namespace D3D11TextureMediaSink
 		HRESULT ReleaseSample(IMFSample* pSample);
 
 	private:
-		BOOL _Shutdown済み = FALSE;
-		BOOL _次のサンプルを処理してよい = TRUE;
+		BOOL _ShutdownComplete = FALSE;
+		BOOL _IsNextSampleReady = TRUE;
 		UINT32 _Width = 0;
 		UINT32 _Height = 0;
 		IMFDXGIDeviceManager*	_DXGIDeviceManager = NULL;
@@ -37,6 +37,6 @@ namespace D3D11TextureMediaSink
 		HRESULT CheckShutdown() const;
 		HRESULT InitializeSampleAllocator();
 		HRESULT ProcessFrameUsingD3D11(ID3D11Texture2D* pTexture2D, UINT dwViewIndex, UINT32 unInterlaceMode, IMFSample** ppVideoOutFrame);
-		HRESULT BOBビデオプロセッサを検索する(_Out_ DWORD* pIndex);
+		HRESULT FindBOBVideoProcessor(_Out_ DWORD* pIndex);
 	};
 }

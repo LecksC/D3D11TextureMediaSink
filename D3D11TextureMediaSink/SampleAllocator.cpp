@@ -12,8 +12,8 @@ namespace D3D11TextureMediaSink
 	HRESULT SampleAllocator::Initialize(ID3D11Device* pD3DDevice, int width, int height)
 	{
 		HRESULT hr = S_OK;
-
-		this->_空きができた = ::CreateEvent(NULL, FALSE, FALSE, NULL);	// 通常はFALSEなので注意
+		// Create an event object to signal when a sample becomes available.
+		this->_FreeSampleAvailable = ::CreateEvent(NULL, FALSE, FALSE, NULL);	 // Note that usually the second argument is FALSE.
 
 		for (int i = 0; i < SAMPLE_MAX; i++)
 		{
@@ -23,38 +23,38 @@ namespace D3D11TextureMediaSink
 
 			do
 			{
-				// サンプルを作成。
+				// Create a new sample.
 				if (FAILED(hr = ::MFCreateSample(&pSample)))
 					break;
 
-				// テクスチャリソースを作成。
+				// Create a texture resource.
 				D3D11_TEXTURE2D_DESC desc;
 				ZeroMemory(&desc, sizeof(desc));
 				desc.ArraySize = 1;
 				desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
 				desc.CPUAccessFlags = 0;
-				desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;	// 固定
-				desc.Width = width;		// 指定された幅
-				desc.Height = height;	// 指定された高さ
+				desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;	// Fixed format.
+				desc.Width = width;		// Specified width.
+				desc.Height = height;	// Specified height.
 				desc.MipLevels = 1;
 				desc.SampleDesc = { 1, 0 };
 				desc.Usage = D3D11_USAGE_DEFAULT;
 				if (FAILED(hr = pD3DDevice->CreateTexture2D(&desc, NULL, &pTexture)))
 					break;
 
-				// テクスチャからメディアバッファを作成。
+				// Create a media buffer from the texture.
 				if (FAILED(hr = ::MFCreateDXGISurfaceBuffer(__uuidof(ID3D11Texture2D), pTexture, 0, FALSE, &pBuffer)))
 					break;
 
-				// メディアバッファをサンプルに追加。
+				// Add the media buffer to the sample.
 				if (FAILED(hr = pSample->AddBuffer(pBuffer)))
 					break;
 
-				// サンプルの状態を READY に初期化。
+				// Initialize the sample state to READY.
 				if (FAILED(hr = pSample->SetUINT32(SAMPLE_STATE, SAMPLE_STATE_READY)))
 					break;
 
-				// 完成したサンプルをキューに追加。
+				// Add the completed sample to the queue.
 				this->_SampleQueue[i] = pSample;
 				this->_SampleQueue[i]->AddRef();
 
@@ -68,7 +68,7 @@ namespace D3D11TextureMediaSink
 				return hr;
 		}
 
-		this->_Shutdown済み = FALSE;
+		this->_IsShutdown = FALSE;
 
 		return S_OK;
 	}
@@ -76,10 +76,10 @@ namespace D3D11TextureMediaSink
 	{
 		AutoLock lock(&this->_csSampleAllocator);
 
-		if (this->_Shutdown済み)
+		if (this->_IsShutdown)
 			return S_FALSE;
 
-		this->_Shutdown済み = TRUE;
+		this->_IsShutdown = TRUE;
 
 		for (int i = 0; i < SAMPLE_MAX; i++)
 			this->_SampleQueue[i]->Release();
@@ -88,21 +88,21 @@ namespace D3D11TextureMediaSink
 	}
 	HRESULT SampleAllocator::CheckShutdown()
 	{
-		return (this->_Shutdown済み) ? MF_E_SHUTDOWN : S_OK;
+		return (this->_IsShutdown) ? MF_E_SHUTDOWN : S_OK;
 	}
 
 	HRESULT SampleAllocator::GetSample(IMFSample** ppSample)
 	{
 		HRESULT hr = S_OK;
 
-		// シャットダウン済み？
+		// Have we already shutdown?
 		if (FAILED(hr = this->CheckShutdown()))
 			return hr;
 
 		if (NULL == ppSample)
 			return E_POINTER;
 
-		// 空いてるサンプルを探す。
+		// Look for an available sample.
 		while (TRUE)
 		{
 			int status[SAMPLE_MAX];
@@ -112,7 +112,7 @@ namespace D3D11TextureMediaSink
 
 				for (int i = 0; i < SAMPLE_MAX; i++)
 				{
-					// SAMPLE_STATE 属性の値が READY なら、空いているサンプルである。
+					// If the value of the SAMPLE_STATE attribute is READY, the sample is available.
 
 					UINT32 state;
 					if (FAILED(hr = this->_SampleQueue[i]->GetUINT32(SAMPLE_STATE, &state)))
@@ -122,7 +122,7 @@ namespace D3D11TextureMediaSink
 
 					if (state == SAMPLE_STATE_READY)
 					{
-						*ppSample = this->_SampleQueue[i];	// 空いてたので貸し出し。
+						*ppSample = this->_SampleQueue[i];	// The sample is available, so lend it out.
 						(*ppSample)->AddRef();
 
 						//TCHAR buf[1024];
@@ -133,11 +133,11 @@ namespace D3D11TextureMediaSink
 					}
 				}
 
-			} // lockスコープここまで
+			} // end of the lock scope
 
-			// 空いてなかったので空くまで待つ。
-			if (::WaitForSingleObject(this->_空きができた, 5000) == WAIT_TIMEOUT)
-				break;	// タイムアウトしたら諦める
+			// If there are no available samples, wait until one becomes available.
+			if (::WaitForSingleObject(this->_FreeSampleAvailable, 5000) == WAIT_TIMEOUT)
+				break;	 // If the wait times out, give up and return an error.
 		}
 
 		//OutputDebugString(L"SampleAllocator::GetSample - NoSample...\n");
@@ -149,21 +149,21 @@ namespace D3D11TextureMediaSink
 
 		HRESULT hr = S_OK;
 
-		// シャットダウン済み？
+		// Is the allocator shut down?
 		if (FAILED(hr = this->CheckShutdown()))
 			return hr;
 
 		if (NULL == pSample)
 			return E_POINTER;
 
-		// 貸し出したサンプルを探す。
+		// Look for the sample that was lent out.
 		for (int i = 0; i < SAMPLE_MAX; i++)
 		{
 			if (this->_SampleQueue[i] == pSample)
 			{
-				//pSample->Release();	--> 再利用するんでReleaseしない
+				//pSample->Release();	--> Not releasing since we will reuse it.
 
-				// SAMPLE_STATE 属性を READY にリセット。
+				// Reset the SAMPLE_STATE attribute to READY.
 				if (FAILED(hr = pSample->SetUINT32(SAMPLE_STATE, SAMPLE_STATE_READY)))
 					return hr;
 
@@ -171,14 +171,14 @@ namespace D3D11TextureMediaSink
 				//wsprintf(buf, L"SampleAllocator::ReleaseSample - [%d]OK!\n", i);
 				//OutputDebugString(buf);
 
-				// 空きができた通知
-				::SetEvent(this->_空きができた);
+				// Notify that a sample is available.
+				::SetEvent(this->_FreeSampleAvailable);
 
 				return S_OK;
 			}
 		}
 
 		//OutputDebugString(L"SampleAllocator::ReleaseSample - No Sample...\n");
-		return MF_E_NOT_FOUND;	// うちの貸し出したサンプルじゃない
+		return MF_E_NOT_FOUND;	// The sample is not from our allocator.
 	}
 }

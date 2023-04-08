@@ -1,12 +1,12 @@
 #pragma once
 
 // {FD13125A-546C-4271-98DC-CA2058682AC7}
-// IMFSample へのカスタム属性(uint)
+// Custom attribute (uint) for IMFSample
 DEFINE_GUID(SAMPLE_STATE, 0xfd13125a, 0x546c, 0x4271, 0x98, 0xdc, 0xca, 0x20, 0x58, 0x68, 0x2a, 0xc7);
-#define SAMPLE_STATE_READY		0	// 未使用
-#define SAMPLE_STATE_UPDATING	1	// 更新中
-#define SAMPLE_STATE_SCHEDULED	2	// スケジュール中
-#define SAMPLE_STATE_PRESENT	3	// 表示中
+#define SAMPLE_STATE_READY		0	// Unused
+#define SAMPLE_STATE_UPDATING	1	// Updating
+#define SAMPLE_STATE_SCHEDULED	2	// Scheduled
+#define SAMPLE_STATE_PRESENT	3	// Presenting
 
 #define SAMPLE_MAX		5
 
@@ -24,10 +24,10 @@ namespace D3D11TextureMediaSink
 		HRESULT ReleaseSample(IMFSample* pSample);
 
 	private:
-		BOOL _Shutdown済み = TRUE;
+		BOOL _IsShutdown = TRUE;
 		IMFSample* _SampleQueue[SAMPLE_MAX];
 		CriticalSection _csSampleAllocator;
-		HANDLE _空きができた;
+		HANDLE _FreeSampleAvailable;
 		HRESULT CheckShutdown();
 	};
 }

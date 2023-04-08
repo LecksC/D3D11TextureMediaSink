@@ -1,17 +1,17 @@
-#include "stdafx.h"
+ï»¿#include "stdafx.h"
 
 namespace D3D11TextureMediaSink
 {
 	Scheduler::Scheduler(CriticalSection* critSec)
 	{
-		this->_•\¦‘Ò‚¿ƒTƒ“ƒvƒ‹ƒLƒ…[ = new ThreadSafeComPtrQueue<IMFSample>();
+		this->_presentationSampleQueue = new ThreadSafeComPtrQueue<IMFSample>();
 		this->_ScheduleEventQueue = new ThreadSafePtrQueue<ScheduleEvent>();
 		this->_csStreamSinkAndScheduler = critSec;
-		this->_ƒtƒŒ[ƒ€ŠÔŠu = 0;
-		this->_ƒtƒŒ[ƒ€ŠÔŠu‚Ìl•ª‚Ìˆê = 0;
+		this->_frameInterval = 0;
+		this->_quarterFrameInterval = 0;
 
 		this->_MsgEvent = ::CreateEvent(NULL, FALSE, FALSE, NULL);
-		this->_FlushŠ®—¹’Ê’m = ::CreateEvent(NULL, FALSE, FALSE, NULL);
+		this->_FlushCompleteEvent = ::CreateEvent(NULL, FALSE, FALSE, NULL);
 	}
 	Scheduler::~Scheduler()
 	{
@@ -22,19 +22,19 @@ namespace D3D11TextureMediaSink
 	{
 		HRESULT hr;
 
-		// ˆø”‚Ì MFRatio ‚ğ MFTIME ‚É•ÏŠ·‚µ‚Äƒƒ“ƒo‚É•Û‘¶B
-		UINT64 AvgTimePerFrame = 0;
-		if (FAILED(hr = ::MFFrameRateToAverageTimePerFrame(fps.Numerator, fps.Denominator, &AvgTimePerFrame)))
+		// Convert the input MFRatio to MFTIME and save it to the member variable.
+		UINT64 avgTimePerFrame = 0;
+		if (FAILED(hr = ::MFFrameRateToAverageTimePerFrame(fps.Numerator, fps.Denominator, &avgTimePerFrame)))
 			return hr;
 
-		this->_ƒtƒŒ[ƒ€ŠÔŠu = (MFTIME)AvgTimePerFrame;
-		this->_ƒtƒŒ[ƒ€ŠÔŠu‚Ìl•ª‚Ìˆê = this->_ƒtƒŒ[ƒ€ŠÔŠu / 4;	// Zo‚µ‚½ MFTIME ‚Ì 1/4 ‚ğA‚æ‚­g‚¤‚Ì‚Å–‘O‚ÉŒvZ‚µ‚Ä‚¨‚­B
+		this->_frameInterval = (MFTIME)avgTimePerFrame;
+		this->_quarterFrameInterval = this->_frameInterval / 4;   // Pre-calculate 1/4 of the calculated MFTIME as it is commonly used.
 
 		return S_OK;
 	}
-	HRESULT Scheduler::SetClockRate(float Ä¶ƒŒ[ƒg)
+	HRESULT Scheduler::SetClockRate(float playbackRate)
 	{
-		this->_Ä¶ƒŒ[ƒg = Ä¶ƒŒ[ƒg;
+		this->_playbackRate = playbackRate;
 
 		return S_OK;
 	}
@@ -43,37 +43,37 @@ namespace D3D11TextureMediaSink
 	{
 		HRESULT hr = S_OK;
 
-		// ƒvƒŒƒ[ƒ“ƒe[ƒVƒ‡ƒ“ƒNƒƒbƒN‚ğXV‚·‚éB
+		// Update the presentation clock.
 		SafeRelease(this->_PresentationClock);
 		this->_PresentationClock = pClock;
 		if (NULL != this->_PresentationClock)
 			this->_PresentationClock->AddRef();
 
-		// ƒXƒPƒWƒ…[ƒ‰ƒXƒŒƒbƒh‹N“®
-		this->_ƒXƒŒƒbƒh‹N“®Š®—¹’Ê’m = ::CreateEvent(NULL, FALSE, FALSE, NULL);
-		this->_ƒXƒŒƒbƒhƒnƒ“ƒhƒ‹ = ::CreateThreadpoolWork(&Scheduler::SchedulerThreadProcProxy, this, NULL);	// ƒ[ƒJƒXƒŒƒbƒh‚ğŠm•Û
-		::SubmitThreadpoolWork(this->_ƒXƒŒƒbƒhƒnƒ“ƒhƒ‹);	// ƒ[ƒJƒXƒŒƒbƒh‚ğ‚P‚Â‹N“®
-		DWORD r = ::WaitForSingleObject(this->_ƒXƒŒƒbƒh‹N“®Š®—¹’Ê’m, SCHEDULER_TIMEOUT);	// ‹N“®Š®—¹‘Ò‚¿
-		this->_ƒXƒŒƒbƒhÀs’† = true;
-		::CloseHandle(this->_ƒXƒŒƒbƒh‹N“®Š®—¹’Ê’m);
+		// Start the scheduler thread.
+		this->_threadStartNotification = ::CreateEvent(NULL, FALSE, FALSE, NULL);
+		this->_threadHandle = ::CreateThreadpoolWork(&Scheduler::SchedulerThreadProcProxy, this, NULL);    // Allocate a worker thread
+		::SubmitThreadpoolWork(this->_threadHandle);    // Start one worker thread
+		DWORD r = ::WaitForSingleObject(this->_threadStartNotification, SCHEDULER_TIMEOUT);    // Wait for startup to complete
+		this->_threadIsRunning = true;
+		::CloseHandle(this->_threadStartNotification);
 
 		return S_OK;
 	}
 	HRESULT Scheduler::Stop()
 	{
-		if (this->_ƒXƒŒƒbƒhÀs’† == FALSE)
-			return S_FALSE; // ‹N“®‚µ‚Ä‚¢‚È‚¢
+		if (this->_threadIsRunning == FALSE)
+			return S_FALSE; // not running
 
-		// I—¹ƒCƒxƒ“ƒg‚ğƒZƒbƒg‚µ‚ÄƒXƒŒƒbƒh‚Ö’Ê’mB
+		// Set the termination event and notify the thread.
 		this->_ScheduleEventQueue->Queue(new ScheduleEvent(eTerminate));
 		::SetEvent(this->_MsgEvent);
-		::WaitForThreadpoolWorkCallbacks(this->_ƒXƒŒƒbƒhƒnƒ“ƒhƒ‹, FALSE);	// ƒ[ƒJƒXƒŒƒbƒhI—¹‚Ü‚Å‘Ò‚Â
-		this->_ƒXƒŒƒbƒhÀs’† = FALSE;
+		::WaitForThreadpoolWorkCallbacks(this->_threadHandle, FALSE);    // Wait for the worker thread to end
+		this->_threadIsRunning = FALSE;
 
-		// ƒLƒ…[‚ÌƒTƒ“ƒvƒ‹‚ğ‚·‚×‚Ä”jŠü‚·‚éB
-		this->_•\¦‘Ò‚¿ƒTƒ“ƒvƒ‹ƒLƒ…[->Clear();
+		// Destroy all samples in the queue.
+		this->_presentationSampleQueue->Clear();
 
-		// ƒvƒŒƒ[ƒ“ƒe[ƒVƒ‡ƒ“ƒNƒƒbƒN‚ğ‰ğ•úB
+		// Release the presentation clock.
 		SafeRelease(this->_PresentationClock);
 
 		return S_OK;
@@ -82,14 +82,14 @@ namespace D3D11TextureMediaSink
 	{
 		AutoLock lock(this->_csStreamSinkAndScheduler);
 
-		if (this->_ƒXƒŒƒbƒhÀs’†)
+		if (this->_threadIsRunning)
 		{
-			// ƒtƒ‰ƒbƒVƒ…ƒCƒxƒ“ƒg‚ğƒZƒbƒg‚µ‚ÄƒXƒŒƒbƒh‚Ö’Ê’mB
+			// Set a flush event and notify the thread.
 			this->_ScheduleEventQueue->Queue(new ScheduleEvent(eFlush));
 			::SetEvent(this->_MsgEvent);
 
-			// ƒtƒ‰ƒbƒVƒ…‚ÌŠ®—¹‘Ò‚¿B
-			DWORD r = ::WaitForSingleObject(this->_FlushŠ®—¹’Ê’m, SCHEDULER_TIMEOUT);
+			// Wait for the flush to complete.
+			DWORD r = ::WaitForSingleObject(this->_FlushCompleteEvent, SCHEDULER_TIMEOUT);
 			DWORD s = r;
 		}
 
@@ -105,19 +105,19 @@ namespace D3D11TextureMediaSink
 
 		if (bPresentNow || (NULL == this->_PresentationClock))
 		{
-			// (A) ƒTƒ“ƒvƒ‹‚ğ‚·‚®‚É•\¦‚·‚éB
+			// (A) Present the sample immediately.
 
 			if (FAILED(hr = this->PresentSample(pSample)))
 				return hr;
 		}
 		else
 		{
-			// (B) ƒTƒ“ƒvƒ‹‚ğ•\¦‘Ò‚¿ƒLƒ…[‚ÉŠi”[‚µAƒXƒPƒWƒ…[ƒ‰ƒXƒŒƒbƒh‚É’Ê’mB
+			// (B) Store the sample in the presentation queue and notify the scheduler thread.
 
 			if (FAILED(hr = pSample->SetUINT32(SAMPLE_STATE, SAMPLE_STATE_SCHEDULED)))
 				return hr;
 
-			this->_•\¦‘Ò‚¿ƒTƒ“ƒvƒ‹ƒLƒ…[->Queue(pSample);
+			this->_presentationSampleQueue->Queue(pSample);
 
 			//TCHAR buf[1024];
 			//wsprintf(buf, L"Scheduler::ScheduleSample - queued.(%X)\n", pSample);
@@ -132,7 +132,7 @@ namespace D3D11TextureMediaSink
 
 	void CALLBACK Scheduler::SchedulerThreadProcProxy(PTP_CALLBACK_INSTANCE pInstance, LPVOID arg, PTP_WORK pWork)
 	{
-		// static ‚©‚çƒCƒ“ƒXƒ^ƒ“ƒX‚Ö
+		// Calls the private SchedulerThreadProcPrivate function.
 		reinterpret_cast<Scheduler*>(arg)->SchedulerThreadProcPrivate();
 	}
 	UINT Scheduler::SchedulerThreadProcPrivate()
@@ -140,64 +140,64 @@ namespace D3D11TextureMediaSink
 		DWORD taskIndex = 0;
 		::AvSetMmThreadCharacteristics(TEXT("Playback"), &taskIndex);
 
-		// ƒXƒŒƒbƒh‹N“®Š®—¹’Ê’m‚ğ‘—‚éB
-		::SetEvent(this->_ƒXƒŒƒbƒh‹N“®Š®—¹’Ê’m);
+		// Signals the waiting thread.
+		::SetEvent(this->_threadStartNotification);
 
-		//OutputDebugString(L"ƒXƒŒƒbƒh‹N“®Š®—¹B\n");
+		//OutputDebugString(L"Scheduler thread started.\n");
 
 		DWORD lWait = INFINITE;
 		BOOL bExitThread = FALSE;
 
 		while (bExitThread == FALSE)
 		{
-			// (A)lWait‚ªƒ^ƒCƒ€ƒAƒEƒg‚·‚é‚©A(B)ƒCƒxƒ“ƒg‚ğƒLƒƒƒbƒ`‚·‚é‚Ü‚Å‘Ò‚ÂB
+			// Wait until (A)waitTime times out or (B)an event is caught.
 
-			//_OutputDebugString(L"Scheduler::Thread, lWait = %d ms ‚Å wait ‚µ‚Ü‚·B\n", lWait);
+			//_OutputDebugString(L"Scheduler::Thread, waiting with lWait = %d ms.\n", lWait);
 
 			::WaitForSingleObject(this->_MsgEvent, lWait);
 
 
 			if (0 == this->_ScheduleEventQueue->GetCount() && lWait != INFINITE)
 			{
-				//OutputDebugString(L"Scheduler::Thread, ƒ^ƒCƒ€ƒAƒEƒg‚Å–ÚŠo‚ß‚Ü‚µ‚½B\n");
+				//OutputDebugString(L"Scheduler::Thread, woken up by timeout.\n");
 
-				// (A)ƒ^ƒCƒ€ƒAƒEƒg‚µ‚½ê‡ ¨ ƒTƒ“ƒvƒ‹‚Ì•\¦‚Å‚ ‚é
-				if (FAILED(this->ProcessSamplesInQueue(&lWait)))    // Ÿ‚Ì‘Ò‹@ŠÔ‚ğó‚¯æ‚é
+				// (A) When timed out, process samples at the scheduled time
+				if (FAILED(this->ProcessSamplesInQueue(&lWait)))    // Get next wait time
 				{
-					bExitThread = TRUE; // ƒGƒ‰[”­¶
+					bExitThread = TRUE; // Error occurred
 					break;
 				}
 			}
 			else
 			{
-				// (B) ƒCƒxƒ“ƒg‚ğƒLƒƒƒbƒ`‚µ‚½ê‡ ¨ ƒCƒxƒ“ƒg‚ğˆ—‚·‚é
+				// (B) Process pending events one by one until the queue is empty
 
 				BOOL bProcessSamples = TRUE;
 				while (0 < this->_ScheduleEventQueue->GetCount())
 				{
 					ScheduleEvent* pEvent;
 					if (FAILED(this->_ScheduleEventQueue->Dequeue(&pEvent)))
-						break;	// ”O‚Ì‚½‚ß
+						break;	// Just in case
 
 					switch (pEvent->Type)
 					{
 					case eTerminate:
-						//OutputDebugString(L"Scheduler::Thread, ƒCƒxƒ“ƒg eTerminate ‚Å–ÚŠo‚ß‚Ü‚µ‚½B\n");
+						//OutputDebugString(L"Scheduler::Thread, processing eTerminate event.\n");
 						bExitThread = TRUE;
 						break;
 
 					case eFlush:
-						//OutputDebugString(L"Scheduler::Thread, ƒCƒxƒ“ƒg eFlush ‚Å–ÚŠo‚ß‚Ü‚µ‚½B\n");
-						this->_•\¦‘Ò‚¿ƒTƒ“ƒvƒ‹ƒLƒ…[->Clear();	// ƒLƒ…[‚ğƒtƒ‰ƒbƒVƒ…
+						//OutputDebugString(L"Scheduler::Thread, processing eFlush event.\n");
+						this->_presentationSampleQueue->Clear();	// Clear the queue
 						lWait = INFINITE;
-						::SetEvent(this->_FlushŠ®—¹’Ê’m); // ƒtƒ‰ƒbƒVƒ…Š®—¹’Ê’m
+						::SetEvent(this->_FlushCompleteEvent); // Notify that flushing is complete
 						break;
 
 					case eSchedule:
-						//OutputDebugString(L"Scheduler::Thread, ƒCƒxƒ“ƒg eSchedule ‚Å–ÚŠo‚ß‚Ü‚µ‚½B\n");
+						//OutputDebugString(L"Scheduler::Thread, processing eSchedule event.\n");
 						if (bProcessSamples)
 						{
-							if (FAILED(this->ProcessSamplesInQueue(&lWait)))    // ƒTƒ“ƒvƒ‹‚ğˆ—‚µAŸ‚Ì‘Ò‹@ŠÔ‚ğó‚¯æ‚é
+							if (FAILED(this->ProcessSamplesInQueue(&lWait)))    // Process samples and get next wait time
 							{
 								bExitThread = TRUE;
 								break;
@@ -210,7 +210,7 @@ namespace D3D11TextureMediaSink
 			}
 		}
 
-		//OutputDebugString(L"ƒXƒŒƒbƒhI—¹B\n");
+		//OutputDebugString(L"Thread ended.\n");
 		return 0;
 	}
 	HRESULT Scheduler::ProcessSamplesInQueue(DWORD* plNextSleep)
@@ -222,21 +222,21 @@ namespace D3D11TextureMediaSink
 
 		*plNextSleep = 0;
 
-		while (0 < this->_•\¦‘Ò‚¿ƒTƒ“ƒvƒ‹ƒLƒ…[->GetCount())
+		while (0 < this->_presentationSampleQueue->GetCount())
 		{
-			// ƒLƒ…[‚©‚çƒTƒ“ƒvƒ‹‚ğæ“¾‚·‚éB
+			// Get a sample from the queue.
 			IMFSample* pSample;
-			if (FAILED(hr = this->_•\¦‘Ò‚¿ƒTƒ“ƒvƒ‹ƒLƒ…[->Dequeue(&pSample)))
+			if (FAILED(hr = this->_presentationSampleQueue->Dequeue(&pSample)))
 				return hr;
 
-			// ƒTƒ“ƒvƒ‹‚Ì•\¦”»’èB
+			// Determine whether to display the sample.
 			if (FAILED(hr = this->ProcessSample(pSample, plNextSleep)))
 				return hr;
 
-			if (0 < *plNextSleep)   // ‚Ü‚¾•\¦‚¶‚á‚È‚©‚Á‚½‚çA
+			if (0 < *plNextSleep)   // If it is not yet time to display,
 			{
-				this->_•\¦‘Ò‚¿ƒTƒ“ƒvƒ‹ƒLƒ…[->PutBack(pSample);  // ƒLƒ…[‚É·‚µ–ß‚µ‚Ä
-				break;      // ƒ‹[ƒv‚ğI—¹B
+				this->_presentationSampleQueue->PutBack(pSample);  // put the sample back in the queue
+				break;      // and exit the loop.
 			}
 		}
 
@@ -251,58 +251,58 @@ namespace D3D11TextureMediaSink
 		*plNextSleep = 0;
 		bool bPresentNow = true;
 
-		if (NULL != this->_PresentationClock)   // ƒNƒƒbƒN‚ª‚ ‚é
+		if (NULL != this->_PresentationClock)   // Check if there is a clock
 		{
-			// ƒTƒ“ƒvƒ‹‚Ì•\¦‚ğæ“¾B
+			// Get the presentation time of the sample.
 			LONGLONG hnsPresentationTime;
 			if (FAILED(hr = pSample->GetSampleTime(&hnsPresentationTime)))
-				hnsPresentationTime = 0;    // ƒ^ƒCƒ€ƒXƒ^ƒ“ƒv‚ª‚È‚­‚Ä‚à³í
+				hnsPresentationTime = 0;    // It is normal to have no timestamp.
 
-			// ƒNƒƒbƒN‚©‚çŒ»İ‚ğæ“¾B
+			// Get the current time from the clock.
 			LONGLONG hnsTimeNow;
 			MFTIME hnsSystemTime;
 			if (FAILED(hr = this->_PresentationClock->GetCorrelatedTime(0, &hnsTimeNow, &hnsSystemTime)))
 				return hr;
 
-			// ƒTƒ“ƒvƒ‹‚Ì•\¦‚Ü‚Å‚ÌŠÔ‚ğŒvZ‚·‚éB•‰”‚ÍAƒTƒ“ƒvƒ‹‚ª’x‚ê‚Ä‚¢‚é‚±‚Æ‚ğˆÓ–¡‚·‚éB
+			// Calculate the time until the presentation of the sample. A negative value means that the sample is delayed.
 			LONGLONG hnsDelta = hnsPresentationTime - hnsTimeNow;
-			if (0 > this->_Ä¶ƒŒ[ƒg)
+			if (0 > this->_playbackRate)
 			{
-				// ‹tÄ¶‚É‚ÍAƒNƒƒbƒN‚à‹t‘–‚·‚éB‚»‚Ì‚½‚ßAŠÔ‚à”½“]‚·‚éB
+				// In reverse playback, the clock also runs in reverse. Therefore, the time is reversed.
 				hnsDelta = -hnsDelta;
 			}
 
-			// ƒTƒ“ƒvƒ‹‚Ì•\¦”»’è‚Æ plNextSleep ‚ÌZo
-			if (hnsDelta < -this->_ƒtƒŒ[ƒ€ŠÔŠu‚Ìl•ª‚Ìˆê)
+			// Check if the sample should be presented and calculate plNextSleep.
+			if (hnsDelta < -this->_quarterFrameInterval)
 			{
-				// ƒTƒ“ƒvƒ‹‚Í’x‚ê‚Ä‚¢‚é‚Ì‚Å‚·‚®•\¦‚·‚éB
+				// The sample is delayed, so it should be presented immediately.
 				bPresentNow = true;
 			}
-			else if ((3 * this->_ƒtƒŒ[ƒ€ŠÔŠu‚Ìl•ª‚Ìˆê) < hnsDelta)
+			else if ((3 * this->_quarterFrameInterval) < hnsDelta)
 			{
-				// ‚±‚ÌƒTƒ“ƒvƒ‹‚Ì•\¦‚Í‚Ü‚¾‘‚¢B
-				*plNextSleep = this->MFTimeToMsec(hnsDelta - (3 * this->_ƒtƒŒ[ƒ€ŠÔŠu‚Ìl•ª‚Ìˆê));
-				*plNextSleep = ::abs((int)(*plNextSleep / this->_Ä¶ƒŒ[ƒg));   // Ä¶ƒŒ[ƒg‚ğ”½‰f‚·‚éB
+				// â€šÂ±â€šÃŒÆ’TÆ’â€œÆ’vÆ’â€¹â€šÃŒâ€¢\Å½Â¦â€šÃâ€šÃœâ€šÂ¾â€˜Ââ€šÂ¢ÂB
+				*plNextSleep = this->MFTimeToMsec(hnsDelta - (3 * this->_quarterFrameInterval));
+				*plNextSleep = ::abs((int)(*plNextSleep / this->_playbackRate));   // ÂReflect the playback rate.
 
-				// ‚Ü‚¾•\¦‚µ‚È‚¢B
+				// Do not present yet.
 				bPresentNow = false;
 
-				if (*plNextSleep == 0)	// ‚¿‚å‚¤‚Ç 0 ‚¾‚Æ INFINITE ˆµ‚¢‚É‚È‚Á‚Ä‚µ‚Ü‚¤‚Ì‚Å‰ñ”ğB
+				if (*plNextSleep == 0)	// To avoid being treated as INFINITE when it is exactly 0.
 					*plNextSleep = 1;
 
 				//TCHAR buf[1024];
-				//wsprintf(buf, L"Scheduler::ProcessSamples: ƒTƒ“ƒvƒ‹‚Í‚Ü‚¾•\¦‚µ‚Ü‚¹‚ñB(%x)(lWait=%d)\n", pSample, *plNextSleep);
+				//wsprintf(buf, L"Scheduler::ProcessSamples: This sample will not be presented yet. (%x)(lWait=%d)\n", pSample, *plNextSleep);
 				//OutputDebugString(buf);
 			}
 		}
 
-		// •\¦‚·‚éB
+		// Present the sample.
 		if (bPresentNow)
 		{
 			this->PresentSample(pSample);
 
 			//TCHAR buf[1024];
-			//wsprintf(buf, L"Scheduler::ProcessSamples: ƒTƒ“ƒvƒ‹‚Í•\¦‚³‚ê‚Ü‚µ‚½B(%x)\n", pSample);
+			//wsprintf(buf, L"Scheduler::ProcessSamples: The sample has been presented. (%x)\n", pSample);
 			//OutputDebugString(buf);
 		}
 
@@ -319,7 +319,7 @@ namespace D3D11TextureMediaSink
 	{
 		HRESULT hr = S_OK;
 
-		// ƒR[ƒ‹ƒoƒbƒNŒÄ‚Ño‚µB
+		// Callback invocation.
 		this->_PresentCallback->PresentFrame(pSample);
 
 		return S_OK;

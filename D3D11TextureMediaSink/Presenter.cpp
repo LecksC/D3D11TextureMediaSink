@@ -1,10 +1,10 @@
-#include "stdafx.h"
+ï»¿#include "stdafx.h"
 
 namespace D3D11TextureMediaSink
 {
 	Presenter::Presenter()
 	{
-		this->_ShutdownÏ‚İ = FALSE;
+		this->_ShutdownComplete = FALSE;
 		this->_csPresenter = new CriticalSection();
 		this->_SampleAllocator = new SampleAllocator();
 	}
@@ -24,7 +24,7 @@ namespace D3D11TextureMediaSink
 		this->_D3D11VideoDevice = NULL;
 		this->_D3D11Device->QueryInterface(__uuidof(ID3D11VideoDevice), (void**)&this->_D3D11VideoDevice);
 
-		// ƒTƒ“ƒvƒ‹ƒAƒƒP[ƒ^[‚Ì‰Šú‰»‚ğ‚İ‚éB
+		// Attempt to initialize the sample allocator.
 		this->InitializeSampleAllocator();
 	}
 	IMFDXGIDeviceManager* Presenter::GetDXGIDeviceManager()
@@ -44,40 +44,40 @@ namespace D3D11TextureMediaSink
 		if (NULL == pMediaType)
 			return E_POINTER;
 
-		// ƒVƒƒƒbƒgƒ_ƒEƒ“Ï‚İH
+		// Shut down?
 		if (FAILED(hr = this->CheckShutdown()))
 			return hr;
 
-		UINT32 ƒtƒŒ[ƒ€ƒŒ[ƒg‚Ì•ªq = 30000, ƒtƒŒ[ƒ€ƒŒ[ƒg‚Ì•ª•ê = 1001;
-		UINT32 ‰æ‘œ‚Ì•px, ‰æ‘œ‚Ì‚‚³px = 0;
+		UINT32 FrameRateNumerator = 30000, FrameRateDenominator = 1001;
+		UINT32 ImageWidthPx, ImageHeightPx = 0;
 
-		// ŒŸ¸‘ÎÛ‚ÌƒƒfƒBƒAƒ^ƒCƒv‚©‚çƒtƒŒ[ƒ€ƒTƒCƒYi‰æ‘œ‚Ì•A‚‚³j‚ğæ“¾‚·‚éB
-		if (FAILED(hr = ::MFGetAttributeSize(pMediaType, MF_MT_FRAME_SIZE, &‰æ‘œ‚Ì•px, &‰æ‘œ‚Ì‚‚³px)))
+		// Get the frame size (image width, height) from the media type to be scanned.
+		if (FAILED(hr = ::MFGetAttributeSize(pMediaType, MF_MT_FRAME_SIZE, &ImageWidthPx, &ImageHeightPx)))
 			return hr;
 
-		// ŒŸ¸‘ÎÛ‚ÌƒƒfƒBƒAƒ^ƒCƒv‚©‚çƒtƒŒ[ƒ€ƒŒ[ƒgi•ªqA•ª•êj‚ğæ“¾‚·‚éB
-		::MFGetAttributeRatio(pMediaType, MF_MT_FRAME_RATE, &ƒtƒŒ[ƒ€ƒŒ[ƒg‚Ì•ªq, &ƒtƒŒ[ƒ€ƒŒ[ƒg‚Ì•ª•ê);
+		// Get the frame rate (numerator, denominator) from the media type to be inspected.
+		::MFGetAttributeRatio(pMediaType, MF_MT_FRAME_RATE, &FrameRateNumerator, &FrameRateDenominator);
 
-		// ƒtƒH[ƒ}ƒbƒg‚ªƒTƒ|[ƒg‰Â”\‚©Šm”F‚·‚éB
+		// Check if the format is supportable.
 		D3D11_VIDEO_PROCESSOR_CONTENT_DESC ContentDesc;
 		ZeroMemory(&ContentDesc, sizeof(ContentDesc));
 		ContentDesc.InputFrameFormat = D3D11_VIDEO_FRAME_FORMAT_INTERLACED_TOP_FIELD_FIRST;
-		ContentDesc.InputWidth = (DWORD)‰æ‘œ‚Ì•px;
-		ContentDesc.InputHeight = (DWORD)‰æ‘œ‚Ì‚‚³px;
-		ContentDesc.OutputWidth = (DWORD)‰æ‘œ‚Ì•px;
-		ContentDesc.OutputHeight = (DWORD)‰æ‘œ‚Ì‚‚³px;
-		ContentDesc.InputFrameRate.Numerator = ƒtƒŒ[ƒ€ƒŒ[ƒg‚Ì•ªq;
-		ContentDesc.InputFrameRate.Denominator = ƒtƒŒ[ƒ€ƒŒ[ƒg‚Ì•ª•ê;
-		ContentDesc.OutputFrameRate.Numerator = ƒtƒŒ[ƒ€ƒŒ[ƒg‚Ì•ªq;
-		ContentDesc.OutputFrameRate.Denominator = ƒtƒŒ[ƒ€ƒŒ[ƒg‚Ì•ª•ê;
+		ContentDesc.InputWidth = (DWORD)ImageWidthPx;
+		ContentDesc.InputHeight = (DWORD)ImageHeightPx;
+		ContentDesc.OutputWidth = (DWORD)ImageWidthPx;
+		ContentDesc.OutputHeight = (DWORD)ImageHeightPx;
+		ContentDesc.InputFrameRate.Numerator = FrameRateNumerator;
+		ContentDesc.InputFrameRate.Denominator = FrameRateDenominator;
+		ContentDesc.OutputFrameRate.Numerator = FrameRateNumerator;
+		ContentDesc.OutputFrameRate.Denominator = FrameRateDenominator;
 		ContentDesc.Usage = D3D11_VIDEO_USAGE_PLAYBACK_NORMAL;
 
-		// ID3D11VideoProcessorEnumerator ‚ğæ“¾‚·‚éB
+		// Get the ID3D11VideoProcessorEnumerator.
 		ID3D11VideoProcessorEnumerator*	pVideoProcessorEnum = NULL;
 		if (FAILED(hr = this->_D3D11VideoDevice->CreateVideoProcessorEnumerator(&ContentDesc, &pVideoProcessorEnum)))
 			return hr;
 
-		// ˆø”‚Éw’è‚³‚ê‚½ƒtƒH[ƒ}ƒbƒg‚ª“ü—Í‚Æ‚µ‚ÄƒTƒ|[ƒg‰Â”\‚©‚ğƒ`ƒFƒbƒN‚·‚éB
+		// Checks whether the format specified in the argument can be supported as input.
 		UINT uiFlags;
 		hr = pVideoProcessorEnum->CheckVideoProcessorFormat(dxgiFormat, &uiFlags);
 		if (FAILED(hr) || 0 == (uiFlags & D3D11_VIDEO_PROCESSOR_FORMAT_SUPPORT_INPUT))
@@ -89,41 +89,41 @@ namespace D3D11TextureMediaSink
 	{
 		HRESULT hr = S_OK;
 
-		// ƒVƒƒƒbƒgƒ_ƒEƒ“Ï‚İH
+		// Shut down?
 		if (FAILED(hr = this->CheckShutdown()))
 			return hr;
 
 
 		//
-		// todo: •K—v‚ ‚ê‚ÎA‚±‚±‚Å‰ğ‘œ“x‚âƒAƒXƒyƒNƒg”ä‚È‚Ç‚ğæ“¾‚·‚éB
+		// todo: If necessary, get the resolution, aspect ratio, etc. here.
 		//
 
 
 
-		// ƒƒfƒBƒAƒ^ƒCƒv‚©‚çƒtƒŒ[ƒ€ƒTƒCƒYi‰æ‘œ‚Ì•A‚‚³j‚ğæ“¾‚·‚éB
+		// Get the frame size (image width, height) from the media type.
 		if (FAILED(hr = ::MFGetAttributeSize(pMediaType, MF_MT_FRAME_SIZE, &this->_Width, &this->_Height)))
 			return hr;
 
-		// ƒƒfƒBƒAƒ^ƒCƒv‚©‚çƒtƒH[ƒ}ƒbƒgGUID‚ğæ“¾‚·‚éB
+		// Get the format GUID from the media type.
 		GUID subType;
 		if (FAILED(hr = pMediaType->GetGUID(MF_MT_SUBTYPE, &subType)))
 			return hr;
 
-		// ƒTƒ“ƒvƒ‹ƒAƒƒP[ƒ^[‚Ì‰Šú‰»‚ğ‚İ‚éB
+		// Attempt to initialize the sample allocator.
 		this->InitializeSampleAllocator();
 
 		return S_OK;
 	}
 	BOOL Presenter::IsReadyNextSample()
 	{
-		return this->_Ÿ‚ÌƒTƒ“ƒvƒ‹‚ğˆ—‚µ‚Ä‚æ‚¢;
+		return this->_IsNextSampleReady;
 	}
 
 	void Presenter::Shutdown()
 	{
 		AutoLock(this->_csPresenter);
 
-		if (!this->_ShutdownÏ‚İ)
+		if (!this->_ShutdownComplete)
 		{
 			//this._XVPControl = null;
 			//this._XVP = null;
@@ -132,7 +132,7 @@ namespace D3D11TextureMediaSink
 			SafeRelease(this->_D3D11VideoDevice);
 			SafeRelease(this->_D3D11Device);
 
-			this->_ShutdownÏ‚İ = TRUE;
+			this->_ShutdownComplete = TRUE;
 		}
 	}
 	HRESULT Presenter::Flush()
@@ -141,11 +141,11 @@ namespace D3D11TextureMediaSink
 
 		HRESULT hr;
 
-		// ƒVƒƒƒbƒgƒ_ƒEƒ“Ï‚İH
+		// Shut down?
 		if (FAILED(hr = this->CheckShutdown()))
 			return hr;
 
-		this->_Ÿ‚ÌƒTƒ“ƒvƒ‹‚ğˆ—‚µ‚Ä‚æ‚¢ = TRUE;
+		this->_IsNextSampleReady = TRUE;
 
 		return S_OK;
 	}
@@ -155,7 +155,7 @@ namespace D3D11TextureMediaSink
 		*pbDeviceChanged = FALSE;
 		*pbProcessAgain = FALSE;
 
-		// ƒVƒƒƒbƒgƒ_ƒEƒ“Ï‚İH
+		// Shut down?
 		if (FAILED(hr = this->CheckShutdown()))
 			return hr;
 
@@ -170,7 +170,7 @@ namespace D3D11TextureMediaSink
 
 		do
 		{
-			// “ü—ÍƒTƒ“ƒvƒ‹ (IMFSample) ‚©‚ç IMFMediaBuffer ‚ğæ“¾B
+			// Get IMFMediaBuffer from the input sample (IMFSample).
 			DWORD cBuffers = 0;
 			if (FAILED(hr = pSample->GetBufferCount(&cBuffers)))
 				break;
@@ -185,51 +185,51 @@ namespace D3D11TextureMediaSink
 					break;
 			}
 
-			// “ü—ÍƒTƒ“ƒvƒ‹‚ÌƒCƒ“ƒ^ƒŒ[ƒXƒ‚[ƒh‚ğƒƒfƒBƒAƒ^ƒCƒv‚©‚çæ“¾‚·‚éB
+			// Gets the interlaced mode of the input sample from the media type.
 			MFVideoInterlaceMode unInterlaceMode = (MFVideoInterlaceMode) ::MFGetAttributeUINT32(pCurrentType, MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
 
-			// ƒƒfƒBƒAƒ^ƒCƒv‚ÌƒCƒ“ƒ^ƒŒ[ƒXƒ‚[ƒh‚ª Mix ƒ‚[ƒh‚Ìê‡A¡‰ñ‚Ì“ü—ÍƒTƒ“ƒvƒ‹‚Í‚Ç‚ê‚Å‚ ‚é‚©‚ğŒˆ’è‚·‚éB
+			// If the interlaced mode of the media type is Mix mode, determine which input sample this time is.
 			if (MFVideoInterlace_MixedInterlaceOrProgressive == unInterlaceMode)
 			{
 				if (FALSE == ::MFGetAttributeUINT32(pSample, MFSampleExtension_Interlaced, FALSE))
 				{
-					*punInterlaceMode = MFVideoInterlace_Progressive;	// ƒvƒƒOƒŒƒbƒVƒu‚Å‚ ‚é
+					*punInterlaceMode = MFVideoInterlace_Progressive;	// Be progressive
 				}
 				else
 				{
 					if (::MFGetAttributeUINT32(pSample, MFSampleExtension_BottomFieldFirst, FALSE))
 					{
-						*punInterlaceMode = MFVideoInterlace_FieldInterleavedLowerFirst;	// Lower—Dæ‚ÌƒCƒ“ƒ^[ƒŠ[ƒu‚Å‚ ‚é
+						*punInterlaceMode = MFVideoInterlace_FieldInterleavedLowerFirst;	// Lower-priority interleaving
 					}
 					else
 					{
-						*punInterlaceMode = MFVideoInterlace_FieldInterleavedUpperFirst;	// Upper—Dæ‚ÌƒCƒ“ƒ^[ƒŠ[ƒu‚Å‚ ‚é
+						*punInterlaceMode = MFVideoInterlace_FieldInterleavedUpperFirst;	// Upper-priority interleaving
 					}
 				}
 			}
 
-			// IMFMediaBuffer ‚©‚ç IMFDXGIBuffer ‚ğæ“¾B
+			// Obtained IMFDXGIBuffer from IMFMediaBuffer.
 			if (FAILED(hr = pBuffer->QueryInterface(__uuidof(IMFDXGIBuffer), (LPVOID*)&pMFDXGIBuffer)))
 				break;
 
-			// IMFDXGIBuffer ‚©‚ç ID3D11Texture2D ‚ÆŸŒ³‚ğæ“¾B
+			// Obtained ID3D11Texture2D and dimensions from IMFDXGIBuffer.
 			if (FAILED(hr = pMFDXGIBuffer->GetResource(__uuidof(ID3D11Texture2D), (LPVOID*)&pTexture2D)))
 				break;
 			UINT dwViewIndex = 0;
 			if (FAILED(hr = pMFDXGIBuffer->GetSubresourceIndex(&dwViewIndex)))
 				break;
 
-			// ID3D11Texture2D ‚ğƒrƒfƒIˆ—‚µ‚ÄAo—ÍƒTƒ“ƒvƒ‹iIMFSamplej‚ğ“¾‚éB
+			// ID3D11Texture2D is video-processed to obtain an output sample (IMFSample).
 			if (FAILED(hr = this->ProcessFrameUsingD3D11(pTexture2D, dwViewIndex, *punInterlaceMode, ppOutputSample)))
 				break;
 
-			// o—ÍƒTƒ“ƒvƒ‹‚ÉA“ü—ÍƒTƒ“ƒvƒ‹‚Ìî•ñ‚ğƒRƒs[‚·‚éB
+			// Copy the time information from the input sample to the output sample.
 			LONGLONG llv;
 			if (SUCCEEDED(pSample->GetSampleTime(&llv)))
 			{
 				(*ppOutputSample)->SetSampleTime(llv);
 				//TCHAR buf[1024];
-				//wsprintf(buf, L"Presenter::ProcessFrame; •\¦ %d ms (%x)\n", (llv / 10000), *ppOutputSample);
+				//wsprintf(buf, L"Presenter::ProcessFrame; Display time %d ms (%x)\n", (llv / 10000), *ppOutputSample);
 				//OutputDebugString(buf);
 			}
 			if (SUCCEEDED(pSample->GetSampleDuration(&llv)))
@@ -257,17 +257,18 @@ namespace D3D11TextureMediaSink
 
 	HRESULT Presenter::CheckShutdown() const
 	{
-		return (this->_ShutdownÏ‚İ) ? MF_E_SHUTDOWN : S_OK;
+		return this->_ShutdownComplete ? MF_E_SHUTDOWN : S_OK;
 	}
 	HRESULT Presenter::InitializeSampleAllocator()
 	{
-		// ƒfƒoƒCƒX‚ÆƒTƒCƒY‚ÆƒtƒH[ƒ}ƒbƒgA‚»‚ë‚Á‚Ä‚éH
+		// Do you have the device, size, and format?
 		if (NULL == this->_D3D11Device || this->_Width == 0 || this->_Height == 0)
-			return MF_E_NOT_INITIALIZED;	// ‚Ü‚¾‚»‚ë‚Á‚Ä‚È‚¢
+			return MF_E_NOT_INITIALIZED;	// Not yet available
 
-		this->_SampleAllocator->Shutdown();	// ”O‚Ì‚½‚ßƒVƒƒƒbƒgƒ_ƒEƒ“‚µ‚ÄA
-		return this->_SampleAllocator->Initialize(this->_D3D11Device, this->_Width, this->_Height);	// ‰Šú‰»B
+		this->_SampleAllocator->Shutdown();	// Shut it down just in case,
+		return this->_SampleAllocator->Initialize(this->_D3D11Device, this->_Width, this->_Height);	// Initialization.
 	}
+
 	HRESULT Presenter::ProcessFrameUsingD3D11(ID3D11Texture2D* pTexture2D, UINT dwViewIndex, UINT32 unInterlaceMode, IMFSample** ppVideoOutFrame)
 	{
 		HRESULT hr = S_OK;
@@ -280,85 +281,85 @@ namespace D3D11TextureMediaSink
 
 		do
 		{
-			// ID3D11DeviceContext ‚ğæ“¾‚·‚éB
+			// ID3D11DeviceContext get
 			this->_D3D11Device->GetImmediateContext(&pDeviceContext);
 
-			// ID3D11VideoContext ‚ğæ“¾‚·‚éB
+			// ID3D11VideoContext get
 			if (FAILED(hr = pDeviceContext->QueryInterface(__uuidof(ID3D11VideoContext), (void**)&pVideoContext)))
 				break;
 
-			// “ü—ÍƒeƒNƒXƒ`ƒƒ‚Ìî•ñ‚ğæ“¾‚·‚éB
+			// Get input texture information.
 			D3D11_TEXTURE2D_DESC surfaceDesc;
 			pTexture2D->GetDesc(&surfaceDesc);
 
 			if (surfaceDesc.Width != this->_Width ||
 				surfaceDesc.Height != this->_Height)
 			{
-				hr = MF_E_INVALID_STREAM_DATA;	// ƒƒfƒBƒAƒ^ƒCƒv‚Åw’è‚³‚ê‚½ƒTƒCƒY‚Æˆá‚¤‚È‚ç–³‹B
+				hr = MF_E_INVALID_STREAM_DATA;	// Ignore if it is different from the size specified by the media type.
 				break;
 			}
 
-			// ƒrƒfƒIƒvƒƒZƒbƒT‚Ìì¬‚ª‚Ü‚¾‚È‚çì¬‚·‚éB
+			// Create a video processor if you haven't already.
 			if (NULL == this->_D3D11VideoProcessorEnum || NULL == this->_D3D11VideoProcessor)
 			{
-				SafeRelease(this->_D3D11VideoProcessor);		// ”O‚Ì‚½‚ß
+				SafeRelease(this->_D3D11VideoProcessor);		// Just in case
 				SafeRelease(this->_D3D11VideoProcessorEnum);	//
 
-				// VideoProcessorEnumerator ‚ğì¬‚·‚éB
+				// Create a VideoProcessorEnumerator.
 				D3D11_VIDEO_PROCESSOR_CONTENT_DESC ContentDesc;
 				ZeroMemory(&ContentDesc, sizeof(ContentDesc));
 				ContentDesc.InputFrameFormat = D3D11_VIDEO_FRAME_FORMAT_INTERLACED_TOP_FIELD_FIRST;
-				ContentDesc.InputWidth = surfaceDesc.Width;				// “ü—ÍƒTƒCƒY‚Æ
+				ContentDesc.InputWidth = surfaceDesc.Width;				// Input size and
 				ContentDesc.InputHeight = surfaceDesc.Height;			//
-				ContentDesc.OutputWidth = surfaceDesc.Width;			// o—ÍƒTƒCƒY‚Í“¯‚¶
+				ContentDesc.OutputWidth = surfaceDesc.Width;			// output size are the same.
 				ContentDesc.OutputHeight = surfaceDesc.Height;			//
-				ContentDesc.Usage = D3D11_VIDEO_USAGE_PLAYBACK_NORMAL;	// —p“rFÄ¶
+				ContentDesc.Usage = D3D11_VIDEO_USAGE_PLAYBACK_NORMAL;	// Purpose: Playback
 				if (FAILED(hr = this->_D3D11VideoDevice->CreateVideoProcessorEnumerator(&ContentDesc, &this->_D3D11VideoProcessorEnum)))
 					break;
 
-				// ƒrƒfƒIƒvƒƒZƒbƒT‚ª DXGI_FORMAT_B8G8R8A8_UNORM ‚ğo—Í‚ÅƒTƒ|[ƒg‚Å‚«‚È‚¢‚È‚çƒAƒEƒgB
+				// If the VideoProcessor doesn't support DXGI_FORMAT_B8G8R8A8_UNORM output, we can't use it.
 				UINT uiFlags;
 				DXGI_FORMAT VP_Output_Format = DXGI_FORMAT_B8G8R8A8_UNORM;
 				if (FAILED(hr = this->_D3D11VideoProcessorEnum->CheckVideoProcessorFormat(VP_Output_Format, &uiFlags)))
 					return hr;
 				if (0 == (uiFlags & D3D11_VIDEO_PROCESSOR_FORMAT_SUPPORT_OUTPUT))
 				{
-					hr = MF_E_UNSUPPORTED_D3D_TYPE;	// o—Í‚Æ‚µ‚ÄƒTƒ|[ƒg‚Å‚«‚È‚¢B
+					hr = MF_E_UNSUPPORTED_D3D_TYPE;	// ÂOutput cannot be supported.
 					break;
 				}
 
-				// BOBƒrƒfƒIƒvƒƒZƒbƒT‚ÌƒCƒ“ƒfƒbƒNƒX‚ğŒŸõ‚·‚éB
+				// Find the index of the BOB Video Processor.
 
 				DWORD indexOfBOB;
-				if (FAILED(hr = this->BOBƒrƒfƒIƒvƒƒZƒbƒT‚ğŒŸõ‚·‚é(&indexOfBOB)))
-					break;	// BOB‚ª‚È‚¢...
+				if (FAILED(hr = this->FindBOBVideoProcessor(&indexOfBOB)))
+					break;	// BOB not found...
 
-				// BOBƒrƒfƒIƒvƒƒZƒbƒT‚ğì¬‚·‚éB
+				// Create the BOB Video Processor.
 				if (FAILED(hr = this->_D3D11VideoDevice->CreateVideoProcessor(this->_D3D11VideoProcessorEnum, indexOfBOB, &this->_D3D11VideoProcessor)))
 					break;
 			}
 
-			// o—ÍƒTƒ“ƒvƒ‹‚ğæ“¾‚·‚éB
+			// Get the output sample.
 			pOutputSample = NULL;
 			if (FAILED(hr = this->_SampleAllocator->GetSample(&pOutputSample)))
 				break;
 			if (FAILED(hr = pOutputSample->SetUINT32(SAMPLE_STATE, SAMPLE_STATE_UPDATING)))
 				break;
 
-			// o—ÍƒeƒNƒXƒ`ƒƒ‚ğæ“¾‚·‚éB
+			// Get the output texture.
 			IMFMediaBuffer* pBuffer = NULL;
 			IMFDXGIBuffer* pMFDXGIBuffer = NULL;
 			do
 			{
-				// o—ÍƒTƒ“ƒvƒ‹‚©‚çƒƒfƒBƒAƒoƒbƒtƒ@‚ğæ“¾B
+				// Get the media buffer from the output sample.
 				if (FAILED(hr = pOutputSample->GetBufferByIndex(0, &pBuffer)))
 					break;
 
-				// IMFMediaBuffer ‚©‚ç IMFDXGIBuffer ‚ğæ“¾B
+				// Get the IMFDXGIBuffer from the IMFMediaBuffer.
 				if (FAILED(hr = pBuffer->QueryInterface(__uuidof(IMFDXGIBuffer), (LPVOID*)&pMFDXGIBuffer)))
 					break;
 
-				// IMFDXGIBuffer ‚©‚ç ID3D11Texture2D ‚ğæ“¾B
+				// Get the ID3D11Texture2D from the IMFDXGIBuffer.
 				if (FAILED(hr = pMFDXGIBuffer->GetResource(__uuidof(ID3D11Texture2D), (LPVOID*)&pOutputTexture2D)))
 					break;
 
@@ -370,7 +371,7 @@ namespace D3D11TextureMediaSink
 			if (FAILED(hr))
 				break;
 
-			// “ü—ÍƒeƒNƒXƒ`ƒƒ‚©‚ç“ü—Íƒrƒ…[‚ğì¬‚·‚éB
+			// Create an input view from the input texture.
 			D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC InputLeftViewDesc;
 			ZeroMemory(&InputLeftViewDesc, sizeof(InputLeftViewDesc));
 			InputLeftViewDesc.FourCC = 0;
@@ -380,7 +381,7 @@ namespace D3D11TextureMediaSink
 			if (FAILED(hr = this->_D3D11VideoDevice->CreateVideoProcessorInputView(pTexture2D, this->_D3D11VideoProcessorEnum, &InputLeftViewDesc, &pInputView)))
 				break;
 
-			// o—ÍƒeƒNƒXƒ`ƒƒ‚©‚ço—Íƒrƒ…[‚ğì¬‚·‚éB
+			// Create an output view from the output texture.
 			D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC OutputViewDesc;
 			ZeroMemory(&OutputViewDesc, sizeof(OutputViewDesc));
 			OutputViewDesc.ViewDimension = D3D11_VPOV_DIMENSION_TEXTURE2D;
@@ -390,9 +391,9 @@ namespace D3D11TextureMediaSink
 			if (FAILED(hr = this->_D3D11VideoDevice->CreateVideoProcessorOutputView(pOutputTexture2D, this->_D3D11VideoProcessorEnum, &OutputViewDesc, &pOutputView)))
 				break;
 
-			// ƒrƒfƒIƒRƒ“ƒeƒLƒXƒg‚Ìƒpƒ‰ƒ[ƒ^İ’è‚ğs‚¤B
+			// Set the parameters for the video context.
 			{
-				// “ü—ÍƒXƒgƒŠ[ƒ€ 0 ‚ÌƒtƒH[ƒ}ƒbƒg‚ğİ’èB
+				// Set the format for input stream 0.
 				D3D11_VIDEO_FRAME_FORMAT FrameFormat = D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE;
 				if ((MFVideoInterlace_FieldInterleavedUpperFirst == unInterlaceMode) ||
 					(MFVideoInterlace_FieldSingleUpper == unInterlaceMode) ||
@@ -407,30 +408,30 @@ namespace D3D11TextureMediaSink
 				}
 				pVideoContext->VideoProcessorSetStreamFrameFormat(this->_D3D11VideoProcessor, 0, FrameFormat);
 
-				// “ü—ÍƒXƒgƒŠ[ƒ€ 0 ‚Ìo—ÍƒŒ[ƒg‚ğİ’èB
+				// Set the output rate for input stream 0.
 				pVideoContext->VideoProcessorSetStreamOutputRate(this->_D3D11VideoProcessor, 0, D3D11_VIDEO_PROCESSOR_OUTPUT_RATE_NORMAL, TRUE, NULL);
 
-				// “ü—ÍƒXƒgƒŠ[ƒ€ 0 ‚Ì“]‘—Œ³‹éŒ`‚ğİ’èB“ü—ÍƒT[ƒtƒFƒX“à‚Ì‹éŒ`B“ü—ÍƒT[ƒtƒFƒX‚ğŠî€‚Æ‚µ‚½ƒsƒNƒZƒ‹À•WBi“ü—ÍƒXƒgƒŠ[ƒ€‚Ì”‚¾‚¯‘¶İj
-				RECT “]‘—Œ³‹éŒ` = { 0L, 0L, (LONG)surfaceDesc.Width, (LONG)surfaceDesc.Height };
-				pVideoContext->VideoProcessorSetStreamSourceRect(this->_D3D11VideoProcessor, 0, TRUE, &“]‘—Œ³‹éŒ`);
+				// Set the source rectangle for input stream 0. This is a rectangle within the input surface specified in pixel coordinates relative to the input surface. (There is one for each input stream.)
+				RECT sourceRect = { 0L, 0L, (LONG)surfaceDesc.Width, (LONG)surfaceDesc.Height };
+				pVideoContext->VideoProcessorSetStreamSourceRect(this->_D3D11VideoProcessor, 0, TRUE, &sourceRect);
 
-				// “ü—ÍƒXƒgƒŠ[ƒ€ 0 ‚Ì“]‘—æ‹éŒ`‚ğİ’èBo—ÍƒT[ƒtƒFƒX“à‚Ì‹éŒ`Bo—ÍƒT[ƒtƒFƒX‚ğŠî€‚Æ‚µ‚½ƒsƒNƒZƒ‹À•WBi“ü—ÍƒXƒgƒŠ[ƒ€‚Ì”‚¾‚¯‘¶İj
-				RECT “]‘—æ‹éŒ` = { 0L, 0L, (LONG)surfaceDesc.Width, (LONG)surfaceDesc.Height };
-				pVideoContext->VideoProcessorSetStreamDestRect(this->_D3D11VideoProcessor, 0, TRUE, &“]‘—æ‹éŒ`);
+				// Set the destination rectangle for input stream 0. This is a rectangle within the output surface specified in pixel coordinates relative to the output surface. (There is one for each input stream.)
+				RECT destRect = { 0L, 0L, (LONG)surfaceDesc.Width, (LONG)surfaceDesc.Height };
+				pVideoContext->VideoProcessorSetStreamDestRect(this->_D3D11VideoProcessor, 0, TRUE, &destRect);
 
-				// o—Íƒ^[ƒQƒbƒg‹éŒ`‚ğİ’èBo—ÍƒT[ƒtƒFƒX“à‚Ì‹éŒ`Bo—ÍƒT[ƒtƒFƒX‚ğŠî€‚Æ‚µ‚½ƒsƒNƒZƒ‹À•WBi‚P‚Â‚¾‚¯‘¶İj
-				RECT ƒ^[ƒQƒbƒg‹éŒ` = { 0L, 0L, (LONG)surfaceDesc.Width, (LONG)surfaceDesc.Height };
-				pVideoContext->VideoProcessorSetOutputTargetRect(this->_D3D11VideoProcessor, TRUE, &ƒ^[ƒQƒbƒg‹éŒ`);
+				// Set the output target rectangle. This is a rectangle within the output surface specified in pixel coordinates relative to the output surface. (There is only one.)
+				RECT targetRect = { 0L, 0L, (LONG)surfaceDesc.Width, (LONG)surfaceDesc.Height };
+				pVideoContext->VideoProcessorSetOutputTargetRect(this->_D3D11VideoProcessor, TRUE, &destRect);
 
-				// “ü—ÍƒXƒgƒŠ[ƒ€ 0 ‚Ì“ü—ÍF‹óŠÔ‚ğİ’èB
+				// Set the input color space for input stream 0.
 				D3D11_VIDEO_PROCESSOR_COLOR_SPACE colorSpace = {};
 				colorSpace.YCbCr_xvYCC = 1;
 				pVideoContext->VideoProcessorSetStreamColorSpace(this->_D3D11VideoProcessor, 0, &colorSpace);
 
-				// o—ÍF‹óŠÔ‚ğİ’èB
+				// Set the output color space.
 				pVideoContext->VideoProcessorSetOutputColorSpace(this->_D3D11VideoProcessor, &colorSpace);
 
-				// o—Í”wŒiF‚ğ•‚Éİ’èB
+				// Set the output background color to black.
 				D3D11_VIDEO_COLOR backgroundColor = {};
 				backgroundColor.RGBA.A = 1.0F;
 				backgroundColor.RGBA.R = 1.0F * static_cast<float>(GetRValue(0)) / 255.0F;
@@ -439,7 +440,7 @@ namespace D3D11TextureMediaSink
 				pVideoContext->VideoProcessorSetOutputBackgroundColor(this->_D3D11VideoProcessor, FALSE, &backgroundColor);
 			}
 
-			// “ü—Í‚©‚ço—Í‚ÖA‰ÁH‚µ‚È‚ª‚ç•ÏŠ·‚·‚éB
+			// Convert and process the input to the output.
 			D3D11_VIDEO_PROCESSOR_STREAM StreamData;
 			ZeroMemory(&StreamData, sizeof(StreamData));
 			StreamData.Enable = TRUE;
@@ -455,27 +456,27 @@ namespace D3D11TextureMediaSink
 			if (FAILED(hr = pVideoContext->VideoProcessorBlt(this->_D3D11VideoProcessor, pOutputView, 0, 1, &StreamData)))
 				break;
 
-			// o—ÍƒTƒ“ƒvƒ‹‚ª³í‚Éì¬‚Å‚«‚½‚Ì‚ÅA•Ô‚·B
+			// If the output sample was created successfully, return it.
 			if (NULL != ppVideoOutFrame)
 			{
 				*ppVideoOutFrame = pOutputSample;
-				//(*ppVideoOutFrame)->AddRef();	--> SampleAllocator‚Ì•Û—L‚·‚éƒTƒ“ƒvƒ‹‚ÍAddRef/Release‚µ‚È‚¢
+				//(*ppVideoOutFrame)->AddRef();--> Do not AddRef/Release the sample owned by SampleAllocator
 			}
 
 		} while (FALSE);
-
+		// Release resources
 		SafeRelease(pInputView);
 		SafeRelease(pOutputView);
 		SafeRelease(pOutputTexture2D);
-		//SafeRelease(pOutputSample);	--> “¯ã
+		//SafeRelease(pOutputSample); --> Do not AddRef/Release the sample owned by SampleAllocator
 		SafeRelease(pVideoContext);
 		SafeRelease(pDeviceContext);
 
 		return hr;
 	}
-	HRESULT Presenter::BOBƒrƒfƒIƒvƒƒZƒbƒT‚ğŒŸõ‚·‚é(_Out_ DWORD* pIndex)
+	HRESULT Presenter::FindBOBVideoProcessor(_Out_ DWORD* pIndex)
 	{
-		// ¦ BOB‚Í‚¢‚©‚È‚éQÆƒtƒŒ[ƒ€‚à—v‹‚µ‚È‚¢‚Ì‚ÅAƒvƒƒOƒŒƒbƒVƒu^ƒCƒ“ƒ^[ƒŒ[ƒXƒrƒfƒI‚Ì—¼•û‚Åg‚¤‚±‚Æ‚ª‚Å‚«‚éB
+		// â€» BOB does not require any reference frames, so it can be used for both progressive/interlaced video.
 
 		HRESULT hr = S_OK;
 		D3D11_VIDEO_PROCESSOR_CAPS caps = {};
@@ -491,14 +492,14 @@ namespace D3D11TextureMediaSink
 			if (FAILED(hr = this->_D3D11VideoProcessorEnum->GetVideoProcessorRateConversionCaps(i, &convCaps)))
 				return hr;
 
-			// ƒCƒ“ƒ^[ƒŒ[ƒX‰ğœ‚ªƒTƒ|[ƒg‚³‚ê‚Ä‚¢‚ê‚Î‚»‚Ì”Ô†‚ğ•Ô‚·B
+			// If deinterlacing is supported, return the corresponding index.
 			if (0 != (convCaps.ProcessorCaps & D3D11_VIDEO_PROCESSOR_PROCESSOR_CAPS_DEINTERLACE_BOB))
 			{
 				*pIndex = i;
-				return S_OK;	// –ß‚é
+				return S_OK;	// return
 			}
 		}
 
-		return E_FAIL;	// ‚È‚©‚Á‚½
+		return E_FAIL;	// not found
 	}
 }

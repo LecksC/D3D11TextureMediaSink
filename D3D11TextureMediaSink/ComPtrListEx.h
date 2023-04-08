@@ -2,7 +2,7 @@
 
 namespace D3D11TextureMediaSink
 {
-	// COMオブジェクトを要素とする双方向リスト。
+	// Doubly-linked list containing COM objects.
 	//
 	template <class T, bool NULLABLE = FALSE>
 	class ComPtrListEx

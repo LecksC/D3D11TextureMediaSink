@@ -1,23 +1,22 @@
-#pragma once
+ï»¿#pragma once
 
 namespace D3D11TextureMediaSink
 {
-	// IMarker:
-	// IMFStreamSink::PlaceMarker ŒÄ‚Ño‚µ‚ğ”ñ“¯Šú‚Éƒnƒ“ƒhƒŠƒ“ƒO‚·‚é‚½‚ß‚ÌƒJƒXƒ^ƒ€ƒCƒ“ƒ^[ƒtƒF[ƒXB
-	//
-	// ƒ}[ƒJ[‚ÍA
-	// @Eƒ}[ƒJ[Œ^		(MFSTREAMSINK_MARKER_TYPE)
-	// @Eƒ}[ƒJ[ƒf[ƒ^	(PROVARIANT)
-	// @EƒRƒ“ƒeƒLƒXƒg		(PROVARIANT)
-	// ‚Å\¬‚³‚ê‚éB
-	//
-	// ‚±‚ÌƒCƒ“ƒ^[ƒtƒF[ƒX‚É‚æ‚èAƒ}[ƒJ[ƒf[ƒ^‚ğIUnknownƒIƒuƒWƒFƒNƒg‚Ì“à‘¤‚ÉŠi”[‚·‚é‚±‚Æ‚ª‚Å‚«A
-	// ‚»‚ÌƒIƒuƒWƒFƒNƒg‚ğA‚»‚ÌƒƒfƒBƒAƒ^ƒCƒv‚ğ•Û‚µ‚Ä‚¢‚éƒLƒ…[‚Æ“¯‚¶ƒLƒ…[‚ÉˆÛ‚·‚é‚±‚Æ‚ª‚Å‚«‚éB
-	// ‚±‚ê‚ÍAƒTƒ“ƒvƒ‹‚Æƒ}[ƒJ[‚ÍƒVƒŠƒAƒ‰ƒCƒY‚³‚ê‚È‚¯‚ê‚Î‚È‚ç‚È‚¢‚Æ‚¢‚¤——R‚É‚æ‚èA•Ö—˜‚Å‚ ‚éB
-	// ‚Â‚Ü‚èA‚»‚Ì‘O‚É—ˆ‚½‚·‚×‚Ä‚ÌƒTƒ“ƒvƒ‹‚ğˆ—‚µI‚í‚é‚Ü‚ÅAƒ}[ƒJ[‚É‚Â‚¢‚ÄÓ”C‚ğ‚Â‚±‚Æ‚ª‚Å‚«‚È‚¢B
-	//
-	// IMarker ‚Í•W€ Media Foundation ƒCƒ“ƒ^[ƒtƒF[ƒX‚Å‚Í‚È‚¢‚Ì‚Å’ˆÓ‚·‚é‚±‚ÆB
-	//
+// IMarker:
+// IMFStreamSink: A custom interface for handling placeMarker calls asynchronously.
+
+//  The markers are composed of
+// - Marker type (MFSTREAMSINK_MARKER_TYPE)
+// - MARKER DATA (PROVARIANT)
+// - CONTEXT (PROVARIANT)
+//
+//  This interface allows marker data to be stored inside an IUnknown object.
+//  The object can be kept in the same queue as the queue holding the media type.
+//  This is useful because samples and markers must be serialized.
+//  In other words, you cannot be responsible for the marker until you have processed
+//  all the samples that came before it.
+
+//  Note that IMarker is not a standard Media Foundation interface.
 	MIDL_INTERFACE("3AC82233-933C-43a9-AF3D-ADC94EABF406")
 	IMarker : public IUnknown
 	{

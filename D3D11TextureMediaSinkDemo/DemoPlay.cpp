@@ -12,10 +12,10 @@ DemoPlay::DemoPlay(HWND hWnd)
 	m_pWork = ::CreateThreadpoolWork(DemoPlay::PresentSwapChainWork, this, NULL);
 	m_evReadyOrFailed = ::CreateEvent(NULL, TRUE, FALSE, NULL);
 
-	// MediaFoundation のセットアップ
+	// Setting up MediaFoundation
 	::MFStartup(MF_VERSION);
 
-	// ID3D11Device と IDXGISwapChain の作成
+	// Creating ID3D11Device and IDXGISwapChain
 	D3D_FEATURE_LEVEL featureLevels[] =	{ D3D_FEATURE_LEVEL_11_0 };
 	D3D_FEATURE_LEVEL feature_level;
 	RECT clientRect;
@@ -51,7 +51,7 @@ DemoPlay::DemoPlay(HWND hWnd)
 	if (FAILED(hr))
 		return;
 
-	// マルチスレッドモードを ON に設定する。DXVAを使う場合は必須。
+	// Turn on multi-threaded mode. This is required when using DXVA.
 	ID3D10Multithread* pD3D10Multithread;
 	do
 	{
@@ -65,12 +65,12 @@ DemoPlay::DemoPlay(HWND hWnd)
 	if (FAILED(hr))
 		return;
 
-	// IMFDXGIDeviceManager の作成とD3Dデバイスの登録
+	// Create an instance of the IMFDXGIDeviceManager interface.
 	if (FAILED(hr = ::MFCreateDXGIDeviceManager(&m_DXGIDeviceManagerID, &m_pDXGIDeviceManager)))
 		return;
 	m_pDXGIDeviceManager->ResetDevice(m_pD3DDevice, m_DXGIDeviceManagerID);
 
-	// IDXGIOutput の取得
+	// Obtaining the IDXGIOutput
 	IDXGIDevice* pDXGIDevice;
 	IDXGIAdapter* pDXGIAdapter;
 	do
@@ -90,12 +90,12 @@ DemoPlay::DemoPlay(HWND hWnd)
 	if (FAILED(hr))
 		return;
 
-	// トポロジーワークキュー設定用ID。IUnknown になるなら、内容はなんでもいい。
+	// ID for setting topology work queue. The content can be anything if it is of type IUnknown.
 	IMFMediaType* pID = NULL;
 	::MFCreateMediaType(&pID);
 	this->ID_RegistarTopologyWorkQueueWithMMCSS = (IUnknown*)pID;
 
-	// 初期化完了
+	// Initialization complete.
 	m_bInitialized = TRUE;
 }
 DemoPlay::~DemoPlay()
@@ -105,29 +105,29 @@ void DemoPlay::Dispose()
 {
 	this->m_bInitialized = FALSE;
 
-	// 再生停止
+	// Stop video playback
 	if (NULL != m_pMediaSession)
 		m_pMediaSession->Stop();
 
-	// 表示中なら終了を待つ。
+	// Wait for the threadpool work to finish if it's currently being displayed
 	::WaitForThreadpoolWorkCallbacks(m_pWork, TRUE);
 	::CloseThreadpoolWork(m_pWork);
 	
-	// MediaFoundation の解放
+	// Release MediaFoundation resources
 	SafeRelease(ID_RegistarTopologyWorkQueueWithMMCSS);
 	SafeRelease(m_pMediaSinkAttributes);
 	SafeRelease(m_pMediaSink);
 	SafeRelease(m_pMediaSource);
 	SafeRelease(m_pMediaSession);
 
-	// DXGI, D3D11 の解放
+	// Release DXGI, D3D11 resources
 	SafeRelease(m_pDXGIDeviceManager);
 	SafeRelease(m_pDXGIOutput);
 	SafeRelease(m_pDXGISwapChain);
 	SafeRelease(m_pD3DDeviceContext);
 	SafeRelease(m_pD3DDevice);
 
-	// MediaFoundation のシャットダウン
+	// Shutdown MediaFoundation
 	::MFShutdown();
 }
 HRESULT DemoPlay::Play(LPCTSTR szFile)
@@ -136,22 +136,22 @@ HRESULT DemoPlay::Play(LPCTSTR szFile)
 
 	::ResetEvent(m_evReadyOrFailed);
 
-	// MediaSession を作成する。
+	// Create MediaSession.
 	if (FAILED(hr = this->CreateMediaSession(&m_pMediaSession)))
 		return hr;
 
-	// ファイルから MediaSource を作成する。
+	// Create a MediaSource from a file.
 	if (FAILED(hr = this->CreateMediaSourceFromFile(szFile, &m_pMediaSource)))
 		return hr;
 
 	IMFTopology* pTopology = NULL;
 	do
 	{
-		// 部分トポロジーを作成。
+		// Create a partial topology.
 		if (FAILED(hr = this->CreateTopology(&pTopology)))
 			break;
 
-		// MediaSession に登録。
+		// Register the partial topology with the MediaSession.
 		if (FAILED(hr = m_pMediaSession->SetTopology(0, pTopology)))
 			break;
 
@@ -162,13 +162,13 @@ HRESULT DemoPlay::Play(LPCTSTR szFile)
 	if (FAILED(hr))
 		return hr;
 
-	// MediaSession が完全トポロジーの作成に成功（または失敗）したら MESessionTopologyStatus イベントが発出されるので、それまで待つ。
+	// Wait for the MESessionTopologyStatus event to be fired when the MediaSession has successfully (or unsuccessfully) created the full topology.
 	::WaitForSingleObject(m_evReadyOrFailed, 5000);
 
 	if (FAILED(m_hrStatus))
-		return m_hrStatus;	// 作成失敗
+		return m_hrStatus;	// Creation failed
 
-	// MediaSession の再生を開始。
+	// Start playback of the MediaSession.
 	PROPVARIANT prop;
 	::PropVariantInit(&prop);
 	m_pMediaSession->Start(NULL, &prop);
@@ -177,24 +177,24 @@ HRESULT DemoPlay::Play(LPCTSTR szFile)
 }
 void DemoPlay::UpdateAndPresent()
 {
-	if (!m_bPresentNow )	// m_bPresentNow は atomic_bool
+	if (!m_bPresentNow )	// m_bPresentNow is an atomic_bool
 	{
-		// 描画処理
+		// Draw
 		this->Draw();
 
-		// SwapChain 表示
+		// Display the SwapChain
 		m_bPresentNow = true;
 		::SubmitThreadpoolWork(m_pWork);
 	}
 	else
 	{
-		// 進行処理
+		// Progress processing
 		this->Update();
 	}
 }
 void DemoPlay::Update()
 {
-	// todo: 描画以外に行いたい処理
+	// todo: processing to be done other than drawing
 }
 void DemoPlay::Draw()
 {
@@ -208,45 +208,47 @@ void DemoPlay::Draw()
 
 	do
 	{
-		// 現在表示すべき IMFSample が TextureMediaSink の TMS_SAMPLE 属性に設定されているので、それを取得する。
+		// Get the IMFSample that should currently be displayed, which is set to the TMS_SAMPLE attribute of TextureMediaSink.
+		// If the attribute is not set or the operation fails, break out of the loop.
 		if (FAILED(hr = m_pMediaSinkAttributes->GetUnknown(TMS_SAMPLE, IID_IMFSample, (void**)&pSample)))
 			break;
 		if (NULL == pSample)
-			break;	// 未設定
+			break;	// Not set
 
-		// IMFSample からメディアバッファを取得。
+		// Retrieve the media buffer from the IMFSample.
 		if (FAILED(hr = pSample->GetBufferByIndex(0, &pMediaBuffer)))
 			break;
 
-		// メディアバッファからDXGIバッファを取得。
+		// Retrieve the DXGI buffer from the media buffer.
 		if (FAILED(hr = pMediaBuffer->QueryInterface(IID_IMFDXGIBuffer, (void**)&pDXGIBuffer)))
 			break;
 
-		// DXGIバッファから転送元 Texture2D を取得。
+		// Retrieve the source Texture2D from the DXGI buffer.
 		if (FAILED(hr = pDXGIBuffer->GetResource(IID_ID3D11Texture2D, (void**)&pTexture2D)))
 			break;
 
-		// 転送元 Texture2D のサブリソースインデックスを取得。
+		// Retrieve the sub-resource index of the source Texture2D.
 		UINT subIndex;
 		if (FAILED(hr = pDXGIBuffer->GetSubresourceIndex(&subIndex)))
 			break;
 
 		//
-		// これで、IMFSample から ID3D11Texture2D を取得することができた。
-		// 今回のデモでは、これを単純に SwapChain に矩形描画することにする。
+		// We have now obtained the ID3D11Texture2D from the IMFSample.
+		// For this demo, we will simply draw a rectangle to the SwapChain.
 		//
 
-		// SwapChain から転送先 Texture2D を取得。
+		// Retrieve the destination Texture2D from the SwapChain.
 		if (FAILED(hr = m_pDXGISwapChain->GetBuffer(0, IID_ID3D11Texture2D, (void**)&pBackBufferTexture2D)))
 			break;
 
-		// 転送。
+		// Perform the transfer.
 		m_pD3DDeviceContext->CopySubresourceRegion(pBackBufferTexture2D, 0, 0, 0, 0, pTexture2D, subIndex, NULL);
 
 	} while (FALSE);
 
-	// GetUnknown で TMS_SAMPLE を得たとき、その IMFSample は TextureMediaSink から更新されないよう lock されている。
-	// この lock を解除するために、TMS_SAMPLE 属性に何か（なんでもいい）を SetUnknwon する。これで IMFSample が TextureMediaSink から更新可能になる。
+	// The IMFSample obtained with GetUnknown for TMS_SAMPLE is locked to prevent it from being updated by TextureMediaSink.
+	// To release this lock, set anything(it doesn't matter what) to the TMS_SAMPLE attribute with SetUnknown.
+	// This will make the IMFSample updatable from TextureMediaSink.
 	m_pMediaSinkAttributes->SetUnknown(TMS_SAMPLE, NULL);
 
 	SafeRelease(pBackBufferTexture2D);
@@ -263,15 +265,15 @@ HRESULT DemoPlay::CreateMediaSession(IMFMediaSession** ppMediaSession)
 	IMFMediaSession* pMediaSession = nullptr;
 	do
 	{
-		// MediaSession を生成する。
+		// Create a MediaSession.
 		if (FAILED(hr = ::MFCreateMediaSession(NULL, &pMediaSession)))
 			break;
 
-		// MediaSession からのイベント送信を開始する。
+		// Begin an asynchronous request for events from the Media Session.
 		if (FAILED(hr = pMediaSession->BeginGetEvent(this, nullptr)))
 			break;
 
-		// 作成完了。
+		// Return the result.
 		(*ppMediaSession) = pMediaSession;
 		(*ppMediaSession)->AddRef();
 		hr = S_OK;
@@ -290,16 +292,16 @@ HRESULT DemoPlay::CreateMediaSourceFromFile(LPCTSTR szFile, IMFMediaSource** ppM
 	IMFMediaSource* pMediaSource = nullptr;
 	do
 	{
-		// ソースリゾルバを作成する。
+		// Create a source resolver.
 		if (FAILED(hr = ::MFCreateSourceResolver(&pResolver)))
 			break;
 
-		// ファイルパスからメディアソースを作成する。
+		// Use the source resolver to create a media source from a URL.
 		MF_OBJECT_TYPE type;
 		if (FAILED(hr = pResolver->CreateObjectFromURL(szFile, MF_RESOLUTION_MEDIASOURCE, NULL, &type, (IUnknown**)&pMediaSource)))
 			break;
 
-		// 作成完了。
+		// Return the result.
 		(*ppMediaSource) = pMediaSource;
 		(*ppMediaSource)->AddRef();
 		hr = S_OK;
@@ -319,20 +321,20 @@ HRESULT DemoPlay::CreateTopology(IMFTopology** ppTopology)
 	IMFPresentationDescriptor* pPresentationDesc = NULL;
 	do
 	{
-		// 新しいトポロジーを作成する。
+		// Create a new topology.
 		if (FAILED(hr = ::MFCreateTopology(&pTopology)))
 			break;
 
-		// メディアソース用のプレゼン識別子を作成する。
+		// Create a presentation descriptor for the media source.
 		if(FAILED(hr = m_pMediaSource->CreatePresentationDescriptor(&pPresentationDesc)))
 			break;
 
-		// プレゼン識別子から、メディアソースのストリームの数を取得する。
+		// Get the number of stream descriptors for the media source from the presentation descriptor.
 		DWORD dwDescCount;
 		if (FAILED(hr = pPresentationDesc->GetStreamDescriptorCount(&dwDescCount)))
 			break;
 
-		// メディアソースの各ストリームについて、トポロジーノードを作成してトポロジーに追加する。
+		// For each stream in the media source, create a topology node and add it to the topology.
 		for (DWORD i = 0; i < dwDescCount; i++)
 		{
 			if (FAILED(hr = this->AddTopologyNodes(pTopology, pPresentationDesc, i)))
@@ -341,7 +343,7 @@ HRESULT DemoPlay::CreateTopology(IMFTopology** ppTopology)
 		if (FAILED(hr))
 			break;
 
-		// 作成完了。
+		// Topology creation is complete.
 		(*ppTopology) = pTopology;
 		(*ppTopology)->AddRef();
 		hr = S_OK;
@@ -363,13 +365,13 @@ HRESULT DemoPlay::AddTopologyNodes(IMFTopology* pTopology, IMFPresentationDescri
 	IMFTopologyNode* pOutputNode = NULL;
 	do
 	{
-		// 指定されたストリーム番号のストリーム記述子を取得する。
+		// Get the stream descriptor for the specified stream index.
 		if (FAILED(hr = pPresentationDesc->GetStreamDescriptorByIndex(index, &bSelected, &pStreamDesc)))
 			break;
 
 		if (bSelected)
 		{
-			// (A) ストリームが選択されているなら、トポロジーに追加する。
+			// (A) If the stream is selected, add it to the topology.
 			if (FAILED(hr = this->CreateSourceNode(pPresentationDesc, pStreamDesc, &pSourceNode)))
 				break;
 
@@ -398,7 +400,7 @@ HRESULT DemoPlay::AddTopologyNodes(IMFTopology* pTopology, IMFPresentationDescri
 		}
 		else
 		{
-			// (B) ストリームが選択されていないなら、何もしない。
+			// (B) If the stream is not selected, do nothing.
 		}
 
 	} while (FALSE);
@@ -416,11 +418,11 @@ HRESULT DemoPlay::CreateSourceNode(IMFPresentationDescriptor* pPresentationDesc,
 	IMFTopologyNode* pSourceNode = NULL;
 	do
 	{
-		// ソースノードを作成する。
+		// Create a source node.
 		if (FAILED(hr = ::MFCreateTopologyNode(MF_TOPOLOGY_SOURCESTREAM_NODE, &pSourceNode)))
 			break;
 
-		// ソースノードに３属性を設定する。
+		// Set three attributes to the source node.
 		if (FAILED(hr = pSourceNode->SetUnknown(MF_TOPONODE_SOURCE, m_pMediaSource)))
 			break;
 		if (FAILED(hr = pSourceNode->SetUnknown(MF_TOPONODE_PRESENTATION_DESCRIPTOR, pPresentationDesc)))
@@ -428,7 +430,7 @@ HRESULT DemoPlay::CreateSourceNode(IMFPresentationDescriptor* pPresentationDesc,
 		if (FAILED(hr = pSourceNode->SetUnknown(MF_TOPONODE_STREAM_DESCRIPTOR, pStreamDesc)))
 			break;
 	
-		// 作成完了。
+		// Creation completed.
 		(*ppSourceNode) = pSourceNode;
 		(*ppSourceNode)->AddRef();
 		hr = S_OK;
@@ -447,30 +449,30 @@ HRESULT DemoPlay::CreateOutputNode(IMFStreamDescriptor* pStreamDesc, IMFTopology
 	IMFMediaTypeHandler* pMediaTypeHandler = NULL;
 	do
 	{
-		// 出力ノードを作成。
+		// Create an output node.
 		if (FAILED(hr = ::MFCreateTopologyNode(MF_TOPOLOGY_OUTPUT_NODE, &pOutputNode)))
 			break;
 
-		// メディアハンドラを取得。
+		// Get the media type handler.
 		if (FAILED(hr = pStreamDesc->GetMediaTypeHandler(&pMediaTypeHandler)))
 			break;
 
-		// メジャータイプを取得。
+		// Get the major media type.
 		GUID majorType;
 		if (FAILED(hr = pMediaTypeHandler->GetMajorType(&majorType)))
 			break;
 
 		if (majorType == MFMediaType_Video)
 		{
-			// (A) ビデオレンダラ
+			// (A) Video renderer
 
 			if (NULL == m_pMediaSink)
 			{
-				// TextureMediaSink を作成。
+				// Create a TextureMediaSink.
 				if (FAILED(hr = ::CreateD3D11TextureMediaSink(IID_IMFMediaSink, (void**)&m_pMediaSink, m_pDXGIDeviceManager, m_pD3DDevice)))
 					break;
 
-				// IMFSample 受け取り用に IMFAttributes を取得しておく。
+				// Get IMFAttributes to receive IMFSample.
 				if (FAILED(hr = m_pMediaSink->QueryInterface(IID_IMFAttributes, (void**)&m_pMediaSinkAttributes)))
 					break;
 			}
@@ -478,11 +480,11 @@ HRESULT DemoPlay::CreateOutputNode(IMFStreamDescriptor* pStreamDesc, IMFTopology
 			IMFStreamSink* pStreamSink = NULL;
 			do
 			{
-				// ストリームシンク #0 を取得。
+				// Get stream sink #0.
 				if (FAILED(hr = m_pMediaSink->GetStreamSinkById(0, &pStreamSink)))
 					break;
 
-				// ストリームシンクを出力ノードに登録。
+				// Register the stream sink with the output node.
 				if (FAILED(hr = pOutputNode->SetObject(pStreamSink)))
 					break;
 
@@ -492,16 +494,16 @@ HRESULT DemoPlay::CreateOutputNode(IMFStreamDescriptor* pStreamDesc, IMFTopology
 		}
 		else if (majorType == MFMediaType_Audio)
 		{
-			// (B) オーディオレンダラ
+			// (B) Audio renderer
 
 			IMFActivate* pActivate = NULL;
 			do
 			{
-				// 既定のオーディオレンダラのアクティベートを生成。
+				// Generate an activate of the default audio renderer.
 				if (FAILED(hr = ::MFCreateAudioRendererActivate(&pActivate)))
 					break;
 
-				// 出力ノードに登録。
+				// Register the activate with the output node.
 				if (FAILED(hr = pOutputNode->SetObject(pActivate)))
 					break;
 
@@ -510,7 +512,7 @@ HRESULT DemoPlay::CreateOutputNode(IMFStreamDescriptor* pStreamDesc, IMFTopology
 			SafeRelease(pActivate);
 		}
 
-		// 作成完了。
+		// Finished creating.
 		(*ppOutputNode) = pOutputNode;
 		(*ppOutputNode)->AddRef();
 		hr = S_OK;
@@ -523,7 +525,7 @@ HRESULT DemoPlay::CreateOutputNode(IMFStreamDescriptor* pStreamDesc, IMFTopology
 	return hr;
 }
 
-// IUnknown 実装
+// IUnknown Implementation
 ULONG	DemoPlay::AddRef()
 {
 	return InterlockedIncrement(&this->m_refCount);
@@ -561,10 +563,10 @@ ULONG	DemoPlay::Release()
 	return uCount;
 }
 
-// IMFAsyncCallback 実装
+// IMFAsyncCallback implementation
 STDMETHODIMP DemoPlay::GetParameters(__RPC__out DWORD *pdwFlags, __RPC__out DWORD *pdwQueue)
 {
-	// このメソッドの実装はオプション。
+	// Implementation of this method is optional.
 	return E_NOTIMPL;
 }
 STDMETHODIMP DemoPlay::Invoke(__RPC__in_opt IMFAsyncResult *pAsyncResult)
@@ -577,7 +579,7 @@ STDMETHODIMP DemoPlay::Invoke(__RPC__in_opt IMFAsyncResult *pAsyncResult)
 	IUnknown* pUnk;
 	if (SUCCEEDED(hr = pAsyncResult->GetState(&pUnk)))
 	{
-		// (A) State がある（E_POINTERエラーじゃない）場合
+		// (A) State exists (not E_POINTER error).
 
 		if (this->ID_RegistarTopologyWorkQueueWithMMCSS == pUnk)
 		{
@@ -591,13 +593,13 @@ STDMETHODIMP DemoPlay::Invoke(__RPC__in_opt IMFAsyncResult *pAsyncResult)
 	}
 	else
 	{
-		// (B) State がない場合
+		// (B) State does not exist.
 
 		IMFMediaEvent* pMediaEvent = NULL;
 		MediaEventType eventType;
 		do
 		{
-			// MediaSession からのイベントを受信する。
+			// Receive events from the MediaSession.
 			if (FAILED(hr = m_pMediaSession->EndGetEvent(pAsyncResult, &pMediaEvent)))
 				break;
 			if (FAILED(hr = pMediaEvent->GetType(&eventType)))
@@ -605,19 +607,19 @@ STDMETHODIMP DemoPlay::Invoke(__RPC__in_opt IMFAsyncResult *pAsyncResult)
 			if (FAILED(hr = pMediaEvent->GetStatus(&m_hrStatus)))
 				break;
 
-			// 結果が失敗なら終了。
+			// If the result is a failure, exit.
 			if (FAILED(m_hrStatus))
 			{
 				::SetEvent(m_evReadyOrFailed);
 				return m_hrStatus;
 			}
 
-			// イベントタイプ別に分岐。
+			// Branch by event type.
 			switch (eventType)
 			{
 			case MESessionTopologyStatus:
 
-				// Status 取得。
+				// Get status.
 				UINT32 topoStatus;
 				if (FAILED(hr = pMediaEvent->GetUINT32(MF_EVENT_TOPOLOGY_STATUS, &topoStatus)))
 					break;
@@ -654,7 +656,7 @@ STDMETHODIMP DemoPlay::Invoke(__RPC__in_opt IMFAsyncResult *pAsyncResult)
 
 		SafeRelease(pMediaEvent);
 
-		// 次の MediaSession イベントの受信を待つ。
+		// Wait for the next MediaSession event.
 		if (eventType != MESessionClosed)
 			hr = m_pMediaSession->BeginGetEvent(this, NULL);
 
@@ -666,7 +668,7 @@ void DemoPlay::OnTopologyReady(IMFMediaEvent* pMediaEvent)
 {
 	HRESULT hr;
 
-	// トポロジーワークキューの MMCSS へのクラス割り当て（非同期処理）を開始する。
+	// Begin assigning the class to MMCSS for the topology work queue (asynchronous processing).
 
 	IMFGetService* pGetService = NULL;
 	IMFWorkQueueServices* pWorkQueueServices = NULL;
@@ -711,7 +713,7 @@ void DemoPlay::OnEndRegistarTopologyWorkQueueWithMMCSS(IMFAsyncResult* pAsyncRes
 {
 	HRESULT hr;
 
-	// トポロジーワークキューの MMCSS へのクラス割り当て（非同期処理）を完了する。
+	// Complete the class assignment of the topology work queue to MMCSS (asynchronous processing).
 
 	IMFGetService* pGetService = NULL;
 	IMFWorkQueueServices* pWorkQueueServices = NULL;
@@ -737,10 +739,10 @@ void DemoPlay::OnEndRegistarTopologyWorkQueueWithMMCSS(IMFAsyncResult* pAsyncRes
 	else
 		this->m_hrStatus = S_OK;
 
-	::SetEvent(this->m_evReadyOrFailed);	// イベント発火。
+	::SetEvent(this->m_evReadyOrFailed);	// Trigger an event.
 }
 
-// SwapChain を表示するタスク
+// Task to present SwapChain
 void CALLBACK DemoPlay::PresentSwapChainWork(PTP_CALLBACK_INSTANCE pInstance, LPVOID pvParam, PTP_WORK pWork)
 {
 	auto pDemoPlay = (DemoPlay*)pvParam;

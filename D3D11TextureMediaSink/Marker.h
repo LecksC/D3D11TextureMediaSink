@@ -2,7 +2,7 @@
 
 namespace D3D11TextureMediaSink
 {
-	// IMFStreamSink::PlaceMarker 用にマーカー情報を保持するクラス。
+	// IMFStreamSink: A class that holds marker information for PlaceMarker.
 	//
 	class Marker : public IMarker
 	{
@@ -13,25 +13,25 @@ namespace D3D11TextureMediaSink
 			const PROPVARIANT* pvarContextValue,
 			IMarker** ppMarker);
 
-		// IUnknown 宣言
+		// IUnknown Implementation
 		STDMETHODIMP_(ULONG) AddRef();
 		STDMETHODIMP_(ULONG) Release();
 		STDMETHODIMP QueryInterface(REFIID iid, __RPC__deref_out _Result_nullonfailure_ void** ppv);
 
-		// IMarker 宣言
+		// IMarker Implementation
 		STDMETHODIMP GetType(MFSTREAMSINK_MARKER_TYPE* pType);
 		STDMETHODIMP GetValue(PROPVARIANT* pvar);
 		STDMETHODIMP GetContext(PROPVARIANT* pvar);
 
 	protected:
-		MFSTREAMSINK_MARKER_TYPE	型;
-		PROPVARIANT					値;
-		PROPVARIANT					コンテキスト;
+		MFSTREAMSINK_MARKER_TYPE	mType;
+		PROPVARIANT					mValue;
+		PROPVARIANT					mContext;
 
 	private:
-		Marker(MFSTREAMSINK_MARKER_TYPE 型);
+		Marker(MFSTREAMSINK_MARKER_TYPE type);
 		virtual ~Marker();
 
-		long 参照カウンタ;
+		long mReferenceCounter;
 	};
 }
