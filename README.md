@@ -71,6 +71,7 @@ hr = pDXGIBuffer->GetResource(IID_ID3D11Texture2D, (void**)&pTexture2D);
 
 // Get the subresource index of Texture2D.
 UINT subIndex;
+hr = pDXGIBuffer->GetSubresourceIndex(&subIndex);
 ```
 Draw the acquired ID3D11Texture2D resource in the desired way on the application side.
 
